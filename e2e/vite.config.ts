@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
+import { TRUSTED_TYPES_CSP } from './trusted-types-csp';
 
 const src = (path: string) => fileURLToPath(new URL(`../src/${path}`, import.meta.url));
 // A published build unpacked by `pnpm skew:fetch`, for e2e/skew.spec.ts.
@@ -13,13 +14,19 @@ export default defineConfig({
   plugins: [
     react(),
     {
-      // A strict host CSP for the copyStyles-under-CSP fixture (e2e/csp.spec.ts).
-      // style-src only: Vite's dev client needs inline scripts.
+      // Strict host CSPs: copyStyles under a nonce policy (e2e/csp.spec.ts), and
+      // Trusted Types (e2e/trusted-types.spec.ts). No script-src: Vite's dev client
+      // needs inline scripts.
       name: 'csp-fixture-header',
       configureServer(server) {
         server.middlewares.use((req, res, next) => {
           if (req.url?.startsWith('/csp-frame.html')) {
             res.setHeader('Content-Security-Policy', "style-src 'nonce-rik-e2e'");
+          }
+          if (req.url?.startsWith('/trusted-types.html')) {
+            const name = new URL(req.url, 'http://e2e').searchParams.get('case') ?? '';
+            const policy = TRUSTED_TYPES_CSP[name];
+            if (policy) res.setHeader('Content-Security-Policy', policy);
           }
           next();
         });
