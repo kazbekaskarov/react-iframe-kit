@@ -14,6 +14,12 @@ export interface Registry {
   childConnection?: unknown;
   /** Generated once per page load, reused by every `connectToParent` caller. */
   childInstance?: string;
+  /**
+   * The "react-iframe-kit" Trusted Types policy per window's factory, or `null` if the
+   * page refused it. The policy accepts only the v1 default srcdoc; a different default
+   * document needs a new field. See core/srcdoc.ts.
+   */
+  srcdocPolicies?: WeakMap<object, unknown>;
 }
 
 const KEY: unique symbol = Symbol.for('react-iframe-kit/v1');

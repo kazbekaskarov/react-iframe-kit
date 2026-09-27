@@ -1,13 +1,12 @@
 // @vitest-environment node
 import { renderToString } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { ROOT_MARKER } from '../core/document';
 import { useFrame } from './context';
 import { Frame } from './Frame';
 
 // docs/design.md → SSR: nothing touches `document` on the server.
 describe('server rendering', () => {
-  it('renders <Frame> as an empty iframe with the default srcdoc', () => {
+  it('renders <Frame> as an empty iframe, leaving srcdoc to the client', () => {
     expect(typeof document).toBe('undefined');
 
     const html = renderToString(
@@ -18,13 +17,14 @@ describe('server rendering', () => {
 
     expect(html).toMatch(/^<iframe [^>]*title="preview"/);
     expect(html).toContain('class="frame"');
-    expect(html).toContain(ROOT_MARKER);
     expect(html).not.toContain('content');
+    // Set on the client, where it can go through a Trusted Types policy.
+    expect(html.toLowerCase()).not.toContain('srcdoc');
   });
 
-  it('renders a custom srcDoc', () => {
+  it('leaves a custom srcDoc to the client too', () => {
     const html = renderToString(<Frame title="custom" srcDoc="<p>custom</p>" />);
-    expect(html).toContain('srcDoc="&lt;p&gt;custom&lt;/p&gt;"');
+    expect(html.toLowerCase()).not.toContain('srcdoc');
   });
 
   it('gives useFrame null window and document outside a <Frame>', () => {

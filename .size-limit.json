@@ -4,7 +4,7 @@
     "path": "dist/index.js",
     "import": "{ useIframe }",
     "ignore": ["react", "react-dom"],
-    "limit": "1 kB",
+    "limit": "1.5 kB",
     "gzip": true
   },
   {
@@ -36,7 +36,7 @@
     "path": "dist/index.js",
     "import": "*",
     "ignore": ["react", "react-dom"],
-    "limit": "9.5 kB",
+    "limit": "10 kB",
     "gzip": true
   },
   {

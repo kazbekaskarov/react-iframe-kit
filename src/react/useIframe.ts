@@ -1,21 +1,25 @@
 import { useCallback, useRef, useState } from 'react';
 import { DEFAULT_SRCDOC, isFinalDocument, isSandboxedWithoutSameOrigin } from '../core/document';
 import { IframeKitError } from '../core/errors';
+import { POLICY_NAME, setSrcDoc, type TrustedHTMLLike } from '../core/srcdoc';
 import { useIsomorphicLayoutEffect } from './useIsomorphicLayoutEffect';
 
 export interface UseIframeOptions {
   /**
    * Document to load into the iframe. Must be stable across renders: changing it
-   * reloads the iframe. Defaults to an empty standards-mode document.
+   * reloads the iframe. Defaults to an empty standards-mode document. On a page that
+   * enforces Trusted Types, pass a `TrustedHTML`. See docs/design.md → Trusted Types.
    */
-  srcDoc?: string | undefined;
+  srcDoc?: string | TrustedHTMLLike | undefined;
 }
 
 export interface UseIframeResult {
-  /** Spread onto the `<iframe>`. */
+  /**
+   * Spread onto the `<iframe>`. The `srcdoc` is set by the hook itself, not through
+   * React, so that it can go through a Trusted Types policy.
+   */
   frameProps: {
     ref: (iframe: HTMLIFrameElement | null) => void;
-    srcDoc: string;
   };
   iframe: HTMLIFrameElement | null;
   /** `null` until the final document has loaded; updated on every `load`. */
@@ -24,7 +28,10 @@ export interface UseIframeResult {
   document: Document | null;
   /** Where to portal content: the final document's `<body>`, or `null`. */
   mountNode: HTMLElement | null;
-  /** Set instead of throwing, e.g. `RIK_INVALID_OPTIONS` for an unusable sandbox. */
+  /**
+   * Set instead of throwing: `RIK_INVALID_OPTIONS` for an unusable sandbox, or a
+   * `srcdoc` the page's Trusted Types policy blocked.
+   */
   error: IframeKitError | null;
 }
 
@@ -49,9 +56,10 @@ export function useIframe(options: UseIframeOptions = {}): UseIframeResult {
 
   const ref = useCallback((node: HTMLIFrameElement | null) => setIframe(node), []);
 
-  const previousSrcDoc = useRef(srcDoc);
-  if (__DEV__ && previousSrcDoc.current !== srcDoc) {
-    previousSrcDoc.current = srcDoc;
+  // Compared as text: a TrustedHTML may be a new object with the same content.
+  const previousSrcDoc = useRef(String(srcDoc));
+  if (__DEV__ && previousSrcDoc.current !== String(srcDoc)) {
+    previousSrcDoc.current = String(srcDoc);
     console.warn(
       'react-iframe-kit: `srcDoc` changed, which reloads the iframe. Keep it stable (e.g. a module-level constant).',
     );
@@ -72,6 +80,24 @@ export function useIframe(options: UseIframeOptions = {}): UseIframeResult {
       setLoaded(null);
       return;
     }
+
+    try {
+      setSrcDoc(iframe, srcDoc);
+    } catch (cause) {
+      const blockedError = new IframeKitError(
+        'RIK_INVALID_OPTIONS',
+        `react-iframe-kit: the page blocked the iframe's srcdoc. ${
+          customSrcDoc
+            ? 'Pass `srcDoc` as a TrustedHTML.'
+            : `Allow the "${POLICY_NAME}" policy in \`trusted-types\`.`
+        }`,
+        { cause },
+      );
+      console.error(blockedError);
+      setError(blockedError);
+      setLoaded(null);
+      return;
+    }
     setError(null);
 
     // Runs now (the final document may already have loaded, e.g. before hydration)
@@ -88,10 +114,10 @@ export function useIframe(options: UseIframeOptions = {}): UseIframeResult {
     sync();
     iframe.addEventListener('load', sync);
     return () => iframe.removeEventListener('load', sync);
-  }, [iframe, customSrcDoc]);
+  }, [iframe, srcDoc, customSrcDoc]);
 
   return {
-    frameProps: { ref, srcDoc },
+    frameProps: { ref },
     iframe,
     window: loaded?.window ?? null,
     document: loaded?.document ?? null,

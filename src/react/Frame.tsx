@@ -11,6 +11,7 @@ import {
   useRef,
 } from 'react';
 import { createPortal } from 'react-dom';
+import type { TrustedHTMLLike } from '../core/srcdoc';
 import { mirrorStyles } from '../core/styles';
 import { type FrameContextValue, getFrameContext } from './context';
 import { useIframe } from './useIframe';
@@ -28,8 +29,11 @@ export interface FrameProps
    * including ones added later. See docs/design.md → `<Frame>` for the limits.
    */
   copyStyles?: boolean;
-  /** Custom iframe document. Must be stable across renders; see `useIframe`. */
-  srcDoc?: string;
+  /**
+   * Custom iframe document: a string, or a `TrustedHTML` on a page that enforces
+   * Trusted Types. Must be stable across renders; see `useIframe`.
+   */
+  srcDoc?: string | TrustedHTMLLike;
   /**
    * Size the iframe to its content: `true` for height, or `useIframeResize` options.
    * The resized axis is then owned by the library. See docs/design.md → Resize.
@@ -95,7 +99,7 @@ export const Frame: ForwardRefExoticComponent<FrameProps & RefAttributes<HTMLIFr
 
     return (
       <>
-        <iframe {...iframeProps} srcDoc={frame.frameProps.srcDoc} ref={ref} />
+        <iframe {...iframeProps} ref={ref} />
         {frame.document && head !== undefined && inFrame(head, frame.document.head)}
         {frame.mountNode && inFrame(children, frame.mountNode)}
       </>

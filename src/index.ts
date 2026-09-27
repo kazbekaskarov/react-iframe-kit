@@ -16,6 +16,7 @@ export { IframeKitError, isIframeKitError, RemoteError, TimeoutError } from './c
 export type { MeasureFn, Size } from './core/measure';
 export type { CallOptions } from './core/remote';
 export { withOptions } from './core/remote';
+export type { TrustedHTMLLike } from './core/srcdoc';
 export { transfer } from './core/transfer';
 export type { FrameContextValue } from './react/context';
 export { useFrame } from './react/context';
