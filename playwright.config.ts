@@ -3,10 +3,13 @@ import { CHILD_PORT, HOST_ORIGIN, HOST_PORT } from './e2e/origins';
 
 const CI = Boolean(process.env['CI']);
 
+// Vite is started with plain `node`, not `pnpm exec`: on Linux pnpm doesn't forward
+// SIGTERM to vite, and Playwright then waits forever for the server to exit.
 const server = (port: number) => ({
-  command: `pnpm exec vite --config e2e/vite.config.ts --port ${port}`,
+  command: `node node_modules/vite/bin/vite.js --config e2e/vite.config.ts --port ${port}`,
   url: `http://127.0.0.1:${port}/`,
   reuseExistingServer: !CI,
+  gracefulShutdown: { signal: 'SIGTERM' as const, timeout: 5_000 },
 });
 
 export default defineConfig({
