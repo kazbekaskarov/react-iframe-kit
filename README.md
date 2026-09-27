@@ -1,8 +1,11 @@
 # react-iframe-kit
 
-> **Status: pre-release, not ready for use.** The API is being designed and built in the
-> open; the `0.0.0` version on npm only reserves the name. See
-> [docs/design.md](docs/design.md) for the full design.
+> **Status: pre-1.0; the API may still change.** `0.1.0` on npm has `useIframe` and
+> `<Frame>`. Auto-resize, the parent/child protocol and RPC are on `main` and ship in the
+> next release.
+>
+> **Docs, guides and live demos:** https://kazbekaskarov.github.io/react-iframe-kit/ ·
+> design and protocol: [docs/design.md](docs/design.md)
 
 One TypeScript-first, hooks-first React library for everything you do with iframes:
 
@@ -29,7 +32,7 @@ All three share one connection per iframe.
 - **Built for real deployments.** Host and embedded page can run different versions of
   the library; the protocol is versioned separately from the package.
 
-## Planned API
+## At a glance
 
 ```tsx
 // Parent

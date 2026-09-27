@@ -243,10 +243,14 @@ text changes, which covers dev HMR and runtime CSS-in-JS injection.
   a `MutationObserver` and are not mirrored. `adoptedStyleSheets` are copied once, when
   mirroring starts (Safari < 16.4 has none, which is handled).
 
-Nodes are copied with `importNode`, not rebuilt from text. Cloning keeps the `nonce`
-internal slot, which a strict host CSP needs: the srcdoc document inherits the
-host's CSP, and a nonce-less inline `<style>` would be blocked. It also keeps
-`integrity`/`crossorigin` on links.
+Nodes are copied with `importNode`, not rebuilt from text, which keeps
+`integrity`/`crossorigin` on links. Each copy is also given the original's `nonce`
+explicitly, which a strict host CSP needs: the srcdoc document inherits the host's
+CSP, and a nonce-less inline `<style>` would be blocked. Cloning alone isn't enough.
+Browsers hide a parsed nonce from the attribute, keeping it only in an internal slot.
+Chromium and WebKit carry that slot over to a clone imported into another document;
+Firefox doesn't, so there every copied style was blocked
+(found by `e2e/csp.spec.ts`).
 
 ## Wire protocol (v1)
 
@@ -834,7 +838,10 @@ Messages from an unexpected origin are not errors: they are dropped (logged with
     calling the parent right after connect, and a per-call `timeout: Infinity`
     outliving a slow method that the default timeout rejects. Both fixtures run in
     StrictMode and the spec fails on any page error; that is how the need for the
-    deferred RPC release (see [Connection sharing](#connection-sharing)) showed up.
+    deferred RPC release (see [Connection sharing](#connection-sharing)) showed up;
+  - `copyStyles` under a host CSP of `style-src 'nonce-…'` (`e2e/csp.spec.ts`; the
+    e2e dev server sends the header for that one fixture): copied styles keep their
+    nonce, and a nonce-less style stays blocked both on the host and in the iframe.
   
   Covered by Vitest instead of Playwright, because the state machine is what's under
   test (not browser-specific behavior) and a real `MessageChannel` pair already
@@ -844,14 +851,11 @@ Messages from an unexpected origin are not errors: they are dropped (logged with
   back/forward navigation in Playwright is comparatively slow and flake-prone for
   what it would additionally prove).
   
-  Still open:
-  - two library copies (ESM + CJS) sharing one connection, and `instanceof
-    IframeKitError` across copies — deferred, not for a technical reason but because
-    setting up a second real bundled copy in one e2e fixture is its own chunk of
-    work; the registry sharing itself (`src/core/registry.ts`) is already what both
-    `useIframeResize` and `connectToParent` go through;
-  - `copyStyles` under a host CSP with `style-src 'nonce-…'` — needs a CSP-serving
-    fixture, not yet built.
+  Still open: two library copies (ESM + CJS) sharing one connection, and `instanceof
+  IframeKitError` across copies. This is deferred, not for a technical reason, but
+  because setting up a second real bundled copy in one e2e fixture is its own chunk
+  of work. The registry sharing itself (`src/core/registry.ts`) is already what both
+  `useIframeResize` and `connectToParent` go through.
 - **Version skew** (`e2e/skew.spec.ts`, CI job "Version skew"): the parent from
   `main` against the last published `child` build, and vice versa. `pnpm skew:fetch`
   unpacks the latest published build into `e2e/.published`, after checking the
@@ -864,6 +868,26 @@ Messages from an unexpected origin are not errors: they are dropped (logged with
   ships one. Against a `pnpm pack` of the current build, both directions pass on all
   three browsers.
 - React 18 and 19 matrix in CI.
+- **Docs site** (`site/`, workflow "Docs"): a Playwright smoke test of the built site
+  loads every page with no console errors, drives the live playground, and runs the
+  RPC demo both ways.
+
+## Docs site
+
+`site/` is a Starlight (Astro) site, deployed to GitHub Pages by the "Docs" workflow
+on every push to `main`. Starlight rather than VitePress because demos are React
+islands, which Astro supports natively. The site has its own `package.json` and
+lockfile, so the library's own CI jobs never install Astro. Its demos import the
+library from `../src` (as the e2e fixtures do), so the site always shows `main`; a
+note on the getting-started page says which features are not yet released.
+
+- Guides: portal rendering, auto-resize, RPC and events, security (origins,
+  `sandbox` flags, CSP on host and child).
+- A live playground: edit HTML and CSS, rendered by `<Frame resize>`.
+- A live RPC demo: a real parent/child pair on the site's origin.
+- A comparison table with react-frame-component, iframe-resizer, Penpal and Comlink,
+  hedged as the author's reading of their documented features.
+- API and error reference.
 
 ## Tooling
 
@@ -912,5 +936,9 @@ These can't be settled on paper and need to be resolved by a prototype before v1
    `remote`/`emit`/`on`/`whenConnected`, `useParent`/`useParentEvent`, `transfer`,
    `withOptions` and the `Side<>` contract types. RPC traffic is included in
    `debug: true` logging.
-7. Version-skew test harness; docs site (VitePress or Starlight) with live sandbox,
-   comparison table, and security (sandbox/CSP) guide.
+7. ~~Version-skew test harness; docs site (VitePress or Starlight) with live sandbox,
+   comparison table, and security (sandbox/CSP) guide.~~ Done: see
+   [Testing](#testing) (version skew) and [Docs site](#docs-site). The skew tests
+   start running with the first release that ships the protocol. Along the way,
+   `copyStyles` got its CSP test, which found and fixed the Firefox nonce issue
+   described under [`<Frame>`](#frame).
