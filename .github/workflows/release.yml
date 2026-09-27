@@ -21,7 +21,8 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: pnpm
-          registry-url: https://registry.npmjs.org
+      # No `registry-url` here: it writes an .npmrc with an empty token, which would
+      # shadow the OIDC token exchange used by npm trusted publishing.
       - run: pnpm install --frozen-lockfile
       # Opens or updates the "Version Packages" PR while changesets are pending;
       # publishes to npm once that PR is merged.
