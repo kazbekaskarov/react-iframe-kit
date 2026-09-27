@@ -92,18 +92,24 @@ core fully unit-testable and makes future Vue/Svelte adapters cheap.
 Size budgets (min+gzip, React excluded, enforced by size-limit per import scenario;
 `.size-limit.json` is the source of truth):
 
-| Scenario | Budget | Measured (step 4) |
+| Scenario | Budget | Measured (step 5) |
 |---|---|---|
 | `useIframe` only | ≤ 1 kB | 0.92 kB |
-| `useIframeResize` only | ≤ 1.75 kB | 1.51 kB |
-| `<Frame>` (portal + resize + copyStyles) | ≤ 3.5 kB | 3.15 kB |
-| `useIframeResize` + `useIframeRPC` | ≤ 4 kB | — |
-| entire parent entry | ≤ 5 kB | 3.32 kB |
-| `child` (incl. `autoResize`) | ≤ 2 kB | — |
+| `useIframeResize` only (now pulls in the handshake/connection) | ≤ 4.5 kB | 4.13 kB |
+| `<Frame>` (portal + resize + copyStyles) | ≤ 6 kB | 5.41 kB |
+| entire parent entry, pre-RPC | ≤ 6.5 kB | 5.58 kB |
+| `child` entry, pre-RPC (`connectToParent` + `autoResize`) | ≤ 3.5 kB | 3.06 kB |
+| `child` IIFE, pre-RPC | ≤ 3.5 kB | 3.01 kB |
 
 `<Frame>` is the batteries-included component; size-sensitive users build on
 `useIframe`. Module-level calls such as `forwardRef(...)` must be marked
 `/* @__PURE__ */`, otherwise bundlers keep them and tree-shaking of the entry breaks.
+`useIframeResize` jumped from step 4's 1.51 kB because it now always acquires a
+connection (needed for cross-origin and for the same-origin "child also runs
+autoResize" override, see [Applying](#applying-parent)) — the handshake/connection
+code is no longer resize-only. RPC + events (step 6) reuse this same connection
+rather than adding a second protocol layer, so their marginal cost should be smaller
+than this jump; budgets get one more pass then.
 
 ## Two modes
 
@@ -754,32 +760,56 @@ Messages from an unexpected origin are not errors: they are dropped (logged with
 
 ## Testing
 
-- **Vitest** (happy-dom): core protocol, handshake state machine, RPC, events, size
-  logic, with mocked `postMessage`/`MessageEvent`/`MessageChannel`. Target 100% on
-  `src/core`.
+- **Vitest** (happy-dom): core protocol, handshake state machine, resize/loop-guard
+  logic, with a hand-built fake window/iframe harness and **real** `MessageChannel`/
+  `MessagePort` objects (mocking those specifically was not needed: Node/happy-dom's
+  are spec-compliant, including their async, macrotask-based delivery — tests wait
+  for it with `vi.waitFor` on the actual observable effect, not a fixed delay). RPC
+  and events join this suite in step 6. Enforced at 100% statement/branch/function/line
+  on `src/core` (`vitest.config.ts`); a handful of provably-unreachable branches
+  (`__DEV__` guards under the test build's `define`, and one exhaustive union match)
+  are marked with `v8 ignore` and explained inline rather than counted.
 - **Playwright** (chromium, firefox, webkit): real iframes, including cross-origin via
-  two dev-server ports. Mandatory cases:
+  two dev-server ports. Covered so far:
   - the #22847 document-replacement regression (`e2e/firefox-22847.spec.ts`);
-  - StrictMode double mount (asserts a single handshake);
-  - child reload/reconnect, and a stale `ack` racing a reload;
-  - back/forward cache restore;
-  - an opaque-origin sandboxed child;
+  - cross-origin resize driven by the child's `autoResize`, including the parent
+    applying exactly the reported height (`e2e/cross-origin-resize.spec.ts`);
+  - an opaque-origin sandboxed child, both the `origin: 'null'` opt-in connecting
+    and, without it, the handshake never completing (`e2e/sandboxed-child.spec.ts`).
+    Its fixture only loads over ES modules because the e2e dev server uses them;
+    `type="module"` fetches are CORS-checked even for an opaque request origin, so
+    `e2e/vite.config.ts` sets `server.cors: true` — a dev-server-only concession to
+    the fixture, not a product concern (a built child bundle isn't an ES module
+    fetched cross-realm like this);
+  - child reload/reconnect: a fresh `instance` after `location.reload()` is treated
+    as a new session, not a stuck duplicate (`e2e/child-reload.spec.ts`);
   - the resize feedback-loop guard, including a long animated accordion that must
     not trip it;
   - `copyStyles` mirroring of styles injected at runtime;
   - the iframe loading before hydration;
-  - two library copies (ESM + CJS) on one page share one connection;
-  - child page opened top-level stays `idle`;
-  - a long-running call with a per-call `timeout: Infinity`;
-  - back/forward cache restore where the `syn` overtakes the `bye`;
-  - a `call` arriving right after connect, before sibling components' passive
-    effects have run;
-  - `useIframeResize` mounted after connect gets the current size immediately;
-  - a hidden iframe (`display: none`) does not collapse to 0;
-  - `instanceof IframeKitError` across two library copies;
-  - `copyStyles` under a host CSP with `style-src 'nonce-…'`.
+  - a hidden iframe (`display: none`) does not collapse to 0.
+  
+  Covered by Vitest instead of Playwright, because the state machine is what's under
+  test (not browser-specific behavior) and a real `MessageChannel` pair already
+  proves the async wire semantics: StrictMode double mount (asserts a single
+  handshake via the deferred-teardown timer), a stale `ack`/duplicate `syn` racing a
+  reload, and bfcache restore (`pagehide`/`pageshow` semantics, simulated — a real
+  back/forward navigation in Playwright is comparatively slow and flake-prone for
+  what it would additionally prove).
+  
+  Still open:
+  - two library copies (ESM + CJS) sharing one connection, and `instanceof
+    IframeKitError` across copies — deferred, not for a technical reason but because
+    setting up a second real bundled copy in one e2e fixture is its own chunk of
+    work; the registry sharing itself (`src/core/registry.ts`) is already what both
+    `useIframeResize` and `connectToParent` go through;
+  - a long-running call with `timeout: Infinity`, and a `call` arriving right after
+    connect before sibling components' passive effects run — need `useIframeRPC` to
+    exist (step 6);
+  - `copyStyles` under a host CSP with `style-src 'nonce-…'` — needs a CSP-serving
+    fixture, not yet built.
 - **Version skew:** the parent from `main` against the last published `child` build,
-  and vice versa.
+  and vice versa. Not yet set up; step 7.
 - React 18 and 19 matrix in CI.
 
 ## Tooling
@@ -801,14 +831,13 @@ These can't be settled on paper and need to be resolved by a prototype before v1
    how React 18 and 19 pass a `TrustedHTML` value through the `srcDoc` prop.
    Fallback plan: set `srcdoc` natively in the ref callback through a named policy
    (`react-iframe-kit`) that hosts can allowlist.
-3. **Thresholds.** The values here are starting points to be tuned against the
-   Playwright scenarios: the 30-measurement loop guard, the 100 ms rAF fallback, the
-   1,000-message queue, and the 10 s / 5 s dev warnings.
-4. **Size budgets.** The `child` budget (≤ 2 kB) is at risk given everything the
-   entry contains. The budgets are fixed from the first real implementation, not
-   guessed now. Parent budgets were revised in step 4 from measurements (see
-   [Package layout](#package-layout)); the `child` budget gets the same treatment in
-   step 5.
+3. **Thresholds.** The 30-measurement loop guard and the 100 ms rAF fallback shipped
+   in step 4 unchanged, and the resize-specific 5 s "no size arrived" warning shipped
+   in step 5 unchanged; none have needed tuning yet. The 1,000-message queue and the
+   10 s "still connecting" warning are RPC-only (step 6) and remain unverified.
+4. ~~**Size budgets.**~~ Revised again in step 5 (see [Package layout](#package-layout));
+   `useIframeResize` now includes the handshake, and the `child` budget is measured
+   for the first time. One more pass is expected after step 6 (RPC + events).
 
 ## Roadmap to v1
 
@@ -820,8 +849,13 @@ These can't be settled on paper and need to be resolved by a prototype before v1
 4. ~~Same-origin resize, including the feedback-loop guard.~~ Done: `useIframeResize`
    and `<Frame resize>` for same-origin iframes. The connection-related parts of
    [Applying](#applying-parent) (cached `size`, the missing-`autoResize` warning,
-   `size.loop`) come with step 5.
-5. Core protocol + `child` entry (ESM + IIFE) + cross-origin resize.
+   `size.loop`) came with step 5, below.
+5. ~~Core protocol + `child` entry (ESM + IIFE) + cross-origin resize.~~ Done:
+   handshake (`src/core/parentConnection.ts`, `src/core/childConnection.ts`),
+   `connectToParent`, `autoResize`, and `useIframeResize` now works cross-origin.
+   `debug: true` protocol logging shipped too (`src/core/debugLog.ts`), on the
+   connections but not yet on individual RPC calls (nothing to log there until
+   step 6). See [Testing](#testing) for what's covered and what's deferred.
 6. RPC + events.
 7. Version-skew test harness; docs site (VitePress or Starlight) with live sandbox,
    comparison table, and security (sandbox/CSP) guide.
