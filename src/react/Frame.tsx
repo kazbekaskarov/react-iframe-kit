@@ -8,11 +8,13 @@ import {
   type RefAttributes,
   useCallback,
   useMemo,
+  useRef,
 } from 'react';
 import { createPortal } from 'react-dom';
 import { mirrorStyles } from '../core/styles';
 import { type FrameContextValue, getFrameContext } from './context';
 import { useIframe } from './useIframe';
+import { type UseIframeResizeOptions, useIframeResize } from './useIframeResize';
 import { useIsomorphicLayoutEffect } from './useIsomorphicLayoutEffect';
 
 export interface FrameProps
@@ -28,6 +30,11 @@ export interface FrameProps
   copyStyles?: boolean;
   /** Custom iframe document. Must be stable across renders; see `useIframe`. */
   srcDoc?: string;
+  /**
+   * Size the iframe to its content: `true` for height, or `useIframeResize` options.
+   * The resized axis is then owned by the library. See docs/design.md → Resize.
+   */
+  resize?: boolean | UseIframeResizeOptions;
 }
 
 /**
@@ -36,12 +43,28 @@ export interface FrameProps
  * See docs/design.md → Portal mode.
  */
 export const Frame: ForwardRefExoticComponent<FrameProps & RefAttributes<HTMLIFrameElement>> =
-  forwardRef(function Frame(
-    { children, head, copyStyles = false, srcDoc, ...iframeProps }: FrameProps,
+  /* @__PURE__ */ forwardRef(function Frame(
+    { children, head, copyStyles = false, srcDoc, resize = false, ...iframeProps }: FrameProps,
     forwardedRef: ForwardedRef<HTMLIFrameElement>,
   ) {
     const frame = useIframe({ srcDoc });
     const FrameContext = getFrameContext();
+    useIframeResize(resize ? frame.iframe : null, typeof resize === 'object' ? resize : {});
+
+    const warnedStyle = useRef(false);
+    if (__DEV__ && resize && !warnedStyle.current) {
+      const axis = (typeof resize === 'object' && resize.axis) || 'height';
+      const style = iframeProps.style;
+      const owned = (['height', 'width'] as const).filter(
+        (name) => (axis === 'both' || axis === name) && style?.[name] !== undefined,
+      );
+      if (owned.length > 0) {
+        warnedStyle.current = true;
+        console.warn(
+          `react-iframe-kit: <Frame resize> owns the iframe's ${owned.join(' and ')}; the value in \`style\` is only used until the first measurement.`,
+        );
+      }
+    }
 
     const { ref: frameRef } = frame.frameProps;
     const ref = useCallback(
