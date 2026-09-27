@@ -122,9 +122,21 @@ origins.
 ## Portal mode and the Firefox fix (facebook/react#22847)
 
 **Bug:** when an `<iframe>` is inserted, browsers create an initial `about:blank`
-document synchronously. If React portals into that document (e.g. from a ref callback),
-Firefox later replaces it with a new document on `load`, and the portaled content
-disappears.
+document synchronously. If React portals into that document (e.g. from a ref callback)
+and the iframe's document is replaced afterwards, the portaled content disappears
+silently: React keeps rendering into a detached document, and nothing is logged.
+
+**Where it happens** (measured 2026-09-27 with Playwright's Firefox builds, see
+`e2e/firefox-22847.spec.ts`):
+
+| Situation | Affected |
+|---|---|
+| iframe without `src` or with `src="about:blank"` (the case in #22847) | Firefox ≤ 146, which still includes **Firefox ESR 140** (and Tor Browser, which is based on ESR). Fixed in Firefox 147/148; Chromium and WebKit never replaced the document. |
+| iframe with `srcdoc`, portaled before `load` | **Every browser**: navigating to the srcdoc always replaces the initial document. |
+
+So the naive pattern is still broken for part of Firefox users, and anyone who adds a
+`srcdoc` (needed for standards mode, see below) hits the same race in all browsers. The
+fix below covers both.
 
 **Fix:**
 
@@ -140,7 +152,12 @@ disappears.
 4. The mount node is recomputed on **every** `load`, so reloads and navigation don't
    leave React rendering into a dead document.
 
-Regression test #1 in Playwright (Firefox) covers this.
+`e2e/firefox-22847.spec.ts` covers this in all three engines: it forces a document
+replacement with `srcdoc`, checks that mounting after the native `load` keeps the
+content, and keeps a canary asserting that mounting before `load` loses it. The Firefox
+≤ 146 case can't run in CI (current Playwright can't drive old Firefox builds); it was
+checked manually with Firefox 128, 140, 142 and 146 (bug present) and 148, 150, 153,
+155 (fixed).
 
 Constraints:
 
@@ -717,7 +734,7 @@ Messages from an unexpected origin are not errors: they are dropped (logged with
   `src/core`.
 - **Playwright** (chromium, firefox, webkit): real iframes, including cross-origin via
   two dev-server ports. Mandatory cases:
-  - the Firefox #22847 regression;
+  - the #22847 document-replacement regression (`e2e/firefox-22847.spec.ts`);
   - StrictMode double mount (asserts a single handshake);
   - child reload/reconnect, and a stale `ack` racing a reload;
   - back/forward cache restore;
@@ -750,8 +767,10 @@ GitHub Actions · `npm publish --provenance`. Package manager: pnpm.
 
 These can't be settled on paper and need to be resolved by a prototype before v1.
 
-1. **Does facebook/react#22847 still reproduce** on current React + Firefox? The
-   project's positioning depends on it (roadmap step 2).
+1. ~~**Does facebook/react#22847 still reproduce?**~~ Resolved 2026-09-27: yes in
+   Firefox ≤ 146 (incl. ESR 140), fixed in 147/148; the same race exists in every
+   browser once a `srcdoc` is used. See [Portal mode](#portal-mode-and-the-firefox-fix-facebookreact22847).
+   Positioning: "mounts only into the final document", not "fixes a current Firefox bug".
 2. **Trusted Types.** `srcdoc` is a `TrustedHTML` sink, so a host with
    `require-trusted-types-for 'script'` blocks a plain string. We need to verify
    how React 18 and 19 pass a `TrustedHTML` value through the `srcDoc` prop.
@@ -767,8 +786,8 @@ These can't be settled on paper and need to be resolved by a prototype before v1
 ## Roadmap to v1
 
 1. Scaffold, CI, contributor hygiene.
-2. Minimal Firefox #22847 repro on current React + Firefox. Confirm that the bug still
-   reproduces, since the project's positioning depends on it.
+2. ~~Minimal Firefox #22847 repro on current React + Firefox.~~ Done: see
+   [Portal mode](#portal-mode-and-the-firefox-fix-facebookreact22847).
 3. `useIframe` + `<Frame>` (+ `copyStyles`) + Playwright regression + SSR/hydration tests.
 4. Same-origin resize, including the feedback-loop guard.
 5. Core protocol + `child` entry (ESM + IIFE) + cross-origin resize.

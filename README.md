@@ -16,10 +16,12 @@ All three share one connection per iframe.
 
 ## Why another iframe library
 
-- **The Firefox portal bug is fixed for you.** Portaling into an iframe from a ref
-  callback loses the content in Firefox when the iframe document is replaced on `load`
-  ([facebook/react#22847](https://github.com/facebook/react/issues/22847)).
-  react-iframe-kit mounts only into the final document.
+- **Content never vanishes on load.** Portaling into an iframe from a ref callback
+  silently loses the content when the iframe's document is replaced after mounting:
+  in Firefox up to 146, including ESR 140
+  ([facebook/react#22847](https://github.com/facebook/react/issues/22847)), and in
+  every browser once the iframe has a `srcdoc`. react-iframe-kit mounts only into the
+  final document, in standards mode.
 - **Typed both ways.** One contract type describes each side's methods and events;
   calls return promises with the right types.
 - **Secure by default.** Explicit origins on both sides, a private `MessageChannel` after
