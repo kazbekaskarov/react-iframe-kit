@@ -77,6 +77,18 @@ describe('mirrorStyles', () => {
     expect(copy?.ownerDocument).toBe(target);
   });
 
+  it('gives each copy the original nonce even when cloning drops it (Firefox)', () => {
+    // A parsed nonce is hidden from the attribute and lives only in the `nonce` IDL
+    // property; Firefox's importNode doesn't carry it into the other document.
+    const original = style('a{}');
+    original.nonce = 'secret';
+    document.head.append(original);
+
+    stop = mirrorStyles(document, target);
+
+    expect(target.head.querySelector('style')?.nonce).toBe('secret');
+  });
+
   it('mirrors styles added later, keeping source order', async () => {
     const first = style('first{}');
     const last = style('last{}');

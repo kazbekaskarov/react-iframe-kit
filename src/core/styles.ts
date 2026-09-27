@@ -2,8 +2,8 @@
  * `copyStyles`: mirrors the parent document's stylesheets into an iframe document.
  * See docs/design.md → `<Frame>`.
  *
- * Nodes are copied with `importNode`, which keeps the `nonce` a strict host CSP needs
- * (the srcdoc document inherits the host's CSP). Known limits:
+ * Nodes are copied with `importNode`, and each copy gets the original's `nonce`, which
+ * a strict host CSP needs (the srcdoc document inherits the host's CSP). Known limits:
  * - rules added through CSSOM (`sheet.insertRule`, e.g. emotion's "speedy" mode) are
  *   not visible to a MutationObserver and aren't mirrored; point the CSS-in-JS library
  *   at the iframe document instead;
@@ -32,7 +32,14 @@ export function mirrorStyles(source: Document, target: Document): () => void {
   const end = target.createComment('react-iframe-kit: copied styles end');
   target.head.prepend(end);
 
-  const copy = (original: StyleNode) => target.importNode(original, true);
+  const copy = (original: StyleNode) => {
+    const clone = target.importNode(original, true);
+    // Browsers hide a parsed nonce from the attribute. Chromium and WebKit carry the
+    // hidden value over when cloning into another document; Firefox doesn't, so an
+    // inherited `style-src 'nonce-…'` policy would block the copy. Set it explicitly.
+    if (original.nonce) clone.nonce = original.nonce;
+    return clone;
+  };
 
   const add = (original: StyleNode) => {
     // Insert before the copy of the next copied sibling to keep source order.
