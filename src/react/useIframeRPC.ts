@@ -1,0 +1,191 @@
+import { useRef, useState } from 'react';
+import type { AnySide, Emit, LocalMethods, Remote, SideShape } from '../core/contract';
+import { DeferredRpc } from '../core/deferredRpc';
+import type { IframeKitError } from '../core/errors';
+import { latestMethods } from '../core/latestMethods';
+import { acquireParentConnection, type ParentConnection } from '../core/parentConnection';
+import { DEFAULT_CONNECT_TIMEOUT, RpcEngine, type RpcHandle } from '../core/rpc';
+import { type IframeTarget, useIframeTarget } from './useIframeTarget';
+import { useIsomorphicLayoutEffect } from './useIsomorphicLayoutEffect';
+
+export type RPCStatus = 'idle' | 'connecting' | 'connected' | 'error';
+
+export interface UseIframeRPCOptions<Local extends SideShape = AnySide> {
+  /**
+   * Expected origin of the iframe. Optional: derived from the iframe's `src`
+   * otherwise. See docs/design.md → Security.
+   */
+  origin?: string | undefined;
+  unsafeAllowAnyOrigin?: boolean | undefined;
+  /** Methods the iframe may call. The latest ones are always used. */
+  methods?: LocalMethods<Local> | undefined;
+  /** Per call, from send to result. Default 10 s; `Infinity` is allowed. */
+  timeout?: number | undefined;
+  /** How long a call may wait for the connection. Default 30 s; `Infinity` is allowed. */
+  connectTimeout?: number | undefined;
+  /** Logs all protocol traffic to the console. */
+  debug?: boolean | undefined;
+}
+
+export interface UseIframeRPCResult<RemoteSide extends SideShape, LocalSide extends SideShape> {
+  /** The iframe's methods. Stable across renders; calls made before connecting are queued. */
+  remote: Remote<RemoteSide>;
+  /** Emits one of this side's events. Stable across renders. */
+  emit: Emit<LocalSide>;
+  status: RPCStatus;
+  /** The configuration error behind `status: 'error'`. */
+  error: IframeKitError | null;
+}
+
+const STILL_CONNECTING_MS = 10_000;
+
+interface Retained {
+  iframe: HTMLIFrameElement;
+  connection: ParentConnection;
+  handle: RpcHandle;
+  releaseTimer: ReturnType<typeof setTimeout> | undefined;
+}
+
+/**
+ * Typed calls and events between this page and an iframe. See docs/design.md → RPC
+ * and events API. Generic order is `<Remote, Local>`: the iframe's side first.
+ */
+export function useIframeRPC<
+  RemoteSide extends SideShape = AnySide,
+  LocalSide extends SideShape = AnySide,
+>(
+  target: IframeTarget,
+  options: UseIframeRPCOptions<LocalSide> = {},
+): UseIframeRPCResult<RemoteSide, LocalSide> {
+  const iframe = useIframeTarget(target);
+
+  const optionsRef = useRef(options);
+  useIsomorphicLayoutEffect(() => {
+    optionsRef.current = options;
+  });
+
+  const [deferred] = useState(
+    () => new DeferredRpc(() => optionsRef.current.connectTimeout ?? DEFAULT_CONNECT_TIMEOUT),
+  );
+  const [state, setState] = useState<{ status: RPCStatus; error: IframeKitError | null }>({
+    status: 'idle',
+    error: null,
+  });
+
+  // Teardown is deferred by one macrotask, like the connection's own (see
+  // docs/design.md → Connection sharing): StrictMode's simulated unmount/remount then
+  // reuses the same RPC registration instead of rejecting the calls a mount effect
+  // just made with RIK_DESTROYED.
+  const disposeTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  // Off from unmount on, synchronously: during the deferral window this component's
+  // methods answer RIK_METHOD_NOT_FOUND, so an unmounted component's method is never
+  // called. (StrictMode remounts synchronously, so nothing can arrive in between.)
+  const active = useRef(false);
+  const [methodsRef] = useState(() => ({
+    get current() {
+      return active.current ? optionsRef.current : {};
+    },
+  }));
+  useIsomorphicLayoutEffect(() => {
+    clearTimeout(disposeTimer.current);
+    active.current = true;
+    deferred.reopen();
+    return () => {
+      active.current = false;
+      // Unmount: calls still waiting for an iframe element reject with RIK_DESTROYED.
+      disposeTimer.current = setTimeout(() => deferred.dispose(), 0);
+    };
+  }, [deferred]);
+
+  const retained = useRef<Retained | null>(null);
+
+  // A layout effect, like the other hooks: port messages are macrotasks and can
+  // arrive between a commit and its passive effects. See docs/design.md →
+  // Connection sharing.
+  useIsomorphicLayoutEffect(() => {
+    const release = (entry: Retained) => {
+      clearTimeout(entry.releaseTimer);
+      if (retained.current === entry) retained.current = null;
+      deferred.attach(null);
+      entry.handle.release();
+      entry.connection.release();
+    };
+
+    // A different element (or none) now: the old registration goes right away.
+    const previous = retained.current;
+    if (previous && previous.iframe !== iframe) release(previous);
+
+    if (!iframe) {
+      setState({ status: 'idle', error: null });
+      return;
+    }
+
+    let entry = retained.current;
+    if (entry) {
+      clearTimeout(entry.releaseTimer);
+    } else {
+      const current = optionsRef.current;
+      const fail = (error: unknown) => {
+        deferred.fail(error);
+        setState({ status: 'error', error: error as IframeKitError });
+      };
+      let connection: ParentConnection;
+      try {
+        connection = acquireParentConnection(iframe, {
+          origin: current.origin,
+          unsafeAllowAnyOrigin: current.unsafeAllowAnyOrigin,
+          debug: current.debug,
+        });
+      } catch (error) {
+        fail(error);
+        return;
+      }
+      let handle: RpcHandle;
+      try {
+        handle = connection.acquireRpc(
+          {},
+          {
+            methods: latestMethods(methodsRef),
+            timeout: current.timeout,
+            connectTimeout: current.connectTimeout,
+          },
+          RpcEngine,
+        );
+      } catch (error) {
+        connection.release();
+        fail(error);
+        return;
+      }
+      entry = { iframe, connection, handle, releaseTimer: undefined };
+      retained.current = entry;
+      deferred.attach(handle);
+    }
+
+    let warnTimer: ReturnType<typeof setTimeout> | undefined;
+    const offStatus = entry.connection.onStatusChange((status) => {
+      setState((prev) => (prev.status === status && !prev.error ? prev : { status, error: null }));
+      if (!__DEV__) return;
+      clearTimeout(warnTimer);
+      if (status !== 'connecting') return;
+      warnTimer = setTimeout(() => {
+        console.warn(
+          `react-iframe-kit: the iframe is still not connected after ${STILL_CONNECTING_MS / 1000} s. Likely causes: the page inside it doesn't call \`connectToParent\` (or its script hasn't loaded), its origin doesn't match the expected one (\`origin\` option, or the origin of the iframe's \`src\`), its \`allowedOrigins\` don't include this page's origin, or \`sandbox\` without \`allow-same-origin\` (then pass \`origin: 'null'\`).`,
+        );
+      }, STILL_CONNECTING_MS);
+    });
+
+    const kept = entry;
+    return () => {
+      offStatus();
+      clearTimeout(warnTimer);
+      kept.releaseTimer = setTimeout(() => release(kept), 0);
+    };
+  }, [iframe, deferred]);
+
+  return {
+    remote: deferred.remote as Remote<RemoteSide>,
+    emit: deferred.emit as Emit<LocalSide>,
+    status: state.status,
+    error: state.error,
+  };
+}

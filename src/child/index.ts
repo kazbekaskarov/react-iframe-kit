@@ -3,7 +3,21 @@
 
 export type { ChildStatus, ConnectToParentOptions, ParentHandle } from '../core/childConnection';
 export { connectToParent } from '../core/childConnection';
+export type {
+  AnySide,
+  Contract,
+  Emit,
+  EventHandler,
+  LocalMethods,
+  On,
+  Remote,
+  Side,
+  SideShape,
+} from '../core/contract';
 export type { ErrorCode, SerializedError, TimeoutPhase } from '../core/errors';
 export { IframeKitError, isIframeKitError, RemoteError, TimeoutError } from '../core/errors';
 export type { MeasureFn, Size } from '../core/measure';
 export type { OriginMatcher } from '../core/origin';
+export type { CallOptions } from '../core/remote';
+export { withOptions } from '../core/remote';
+export { transfer } from '../core/transfer';

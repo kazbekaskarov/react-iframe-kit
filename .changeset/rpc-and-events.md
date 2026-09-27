@@ -1,0 +1,5 @@
+---
+'react-iframe-kit': minor
+---
+
+Add typed RPC and events between a page and its iframes. On the parent, `useIframeRPC` returns a `remote` for calling the iframe's methods, an `emit` for sending events, and the connection `status`; `useIframeEvent` subscribes to the iframe's events. In the iframe, `connectToParent` now takes `methods` and returns `remote`, `emit`, `on` and `whenConnected()`, and the new `react-iframe-kit/child/react` entry adds `useParent` and `useParentEvent`. Describe each side once with `Side<{ methods, events }>` to type both ends; function-typed arguments, return values and payloads, and the reserved method names `then`/`toJSON`, are compile errors. Calls made before the connection is up are queued (bounded by `connectTimeout`, default 30 s), each call has a response `timeout` (default 10 s, overridable per call with `withOptions`, including `Infinity` and an `AbortSignal`), errors arrive as `RemoteError` with the remote `code`, and `transfer()` marks values to transfer instead of copy. Parent bundles that only resize don't include the RPC code.
