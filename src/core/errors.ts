@@ -73,6 +73,24 @@ export class RemoteError extends IframeKitError {
   }
 }
 
+/**
+ * Turns a thrown value into its wire form. See docs/design.md → Port messages.
+ *
+ * `stack` is included only when `includeStack` (the responding side's `debug`) is
+ * true: stacks leak file paths and internals to another origin.
+ */
+export function serializeError(value: unknown, includeStack: boolean): SerializedError {
+  if (!(value instanceof Error)) {
+    return { name: 'Error', message: String(value) };
+  }
+  const error: SerializedError = { name: value.name, message: value.message };
+  const code = (value as { code?: unknown }).code;
+  if (typeof code === 'string' || typeof code === 'number') error.code = code;
+  if (Object.hasOwn(value, 'data')) error.data = (value as { data?: unknown }).data;
+  if (includeStack && value.stack !== undefined) error.stack = value.stack;
+  return error;
+}
+
 export class TimeoutError extends IframeKitError {
   static override readonly code: ErrorCode = 'RIK_TIMEOUT';
 

@@ -5,6 +5,7 @@
  * ignored, so the library coexists with any other `postMessage` traffic on the page.
  * Every field is validated on the way in; a malformed message is dropped (`null`).
  */
+import type { SerializedError } from './errors';
 
 /** The handshake envelope marker. Fixed forever; see docs/design.md → Versioning. */
 export const RIK = 1;
@@ -47,7 +48,42 @@ export interface ByeMessage extends Envelope {
   type: 'bye';
 }
 
-export type PortMessage = ReadyMessage | SizeMessage | ByeMessage;
+export interface CallMessage extends Envelope {
+  type: 'call';
+  id: string;
+  method: string;
+  args: unknown[];
+}
+
+export interface ResultSuccessMessage extends Envelope {
+  type: 'result';
+  id: string;
+  ok: true;
+  value?: unknown;
+}
+
+export interface ResultErrorMessage extends Envelope {
+  type: 'result';
+  id: string;
+  ok: false;
+  error: SerializedError;
+}
+
+export type ResultMessage = ResultSuccessMessage | ResultErrorMessage;
+
+export interface EventMessage extends Envelope {
+  type: 'event';
+  name: string;
+  payload?: unknown;
+}
+
+export type PortMessage =
+  | ReadyMessage
+  | SizeMessage
+  | ByeMessage
+  | CallMessage
+  | ResultMessage
+  | EventMessage;
 
 function record(data: unknown): Record<string, unknown> | null {
   if (typeof data !== 'object' || data === null) return null;
@@ -119,7 +155,46 @@ export function parsePortMessage(data: unknown): PortMessage | null {
     };
   }
 
+  if (d['type'] === 'call') {
+    if (
+      typeof d['id'] !== 'string' ||
+      typeof d['method'] !== 'string' ||
+      !Array.isArray(d['args'])
+    ) {
+      return null;
+    }
+    return { rik: RIK, type: 'call', id: d['id'], method: d['method'], args: d['args'] };
+  }
+
+  if (d['type'] === 'result') {
+    if (typeof d['id'] !== 'string' || typeof d['ok'] !== 'boolean') return null;
+    if (d['ok']) return { rik: RIK, type: 'result', id: d['id'], ok: true, value: d['value'] };
+    const error = parseSerializedError(d['error']);
+    if (!error) return null;
+    return { rik: RIK, type: 'result', id: d['id'], ok: false, error };
+  }
+
+  if (d['type'] === 'event') {
+    if (typeof d['name'] !== 'string') return null;
+    return { rik: RIK, type: 'event', name: d['name'], payload: d['payload'] };
+  }
+
   return null;
+}
+
+function parseSerializedError(value: unknown): SerializedError | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const d = value as Record<string, unknown>;
+  if (typeof d['name'] !== 'string' || typeof d['message'] !== 'string') return null;
+  if (d['code'] !== undefined && typeof d['code'] !== 'string' && typeof d['code'] !== 'number') {
+    return null;
+  }
+  if (d['stack'] !== undefined && typeof d['stack'] !== 'string') return null;
+  const error: SerializedError = { name: d['name'], message: d['message'] };
+  if (d['code'] !== undefined) error.code = d['code'] as string | number;
+  if ('data' in d) error.data = d['data'];
+  if (d['stack'] !== undefined) error.stack = d['stack'] as string;
+  return error;
 }
 
 /** The highest version present in both lists, or `undefined` if there is none. */

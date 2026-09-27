@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { IframeKitError, isIframeKitError, RemoteError, TimeoutError } from './errors';
+import {
+  IframeKitError,
+  isIframeKitError,
+  RemoteError,
+  serializeError,
+  TimeoutError,
+} from './errors';
 
 // Simulates an error created by another copy of the library: same brand, different class.
 function foreignError(code: string, name = 'IframeKitError'): Error {
@@ -73,5 +79,44 @@ describe('TimeoutError', () => {
     expect(error.name).toBe('TimeoutError');
     expect(error.code).toBe('RIK_TIMEOUT');
     expect(error.phase).toBe('connect');
+  });
+});
+
+describe('serializeError', () => {
+  it('turns a non-Error thrown value into a plain Error shape', () => {
+    expect(serializeError('boom', false)).toEqual({ name: 'Error', message: 'boom' });
+    expect(serializeError({ oops: true }, false)).toEqual({
+      name: 'Error',
+      message: '[object Object]',
+    });
+  });
+
+  it('carries name, message, code and own `data` from a real Error', () => {
+    const error = new Error('bad input') as Error & { code: string; data: unknown };
+    error.code = 'E_INPUT';
+    error.data = { field: 'email' };
+
+    expect(serializeError(error, false)).toEqual({
+      name: 'Error',
+      message: 'bad input',
+      code: 'E_INPUT',
+      data: { field: 'email' },
+    });
+  });
+
+  it('omits `stack` unless includeStack is true', () => {
+    const error = new Error('x');
+
+    expect(serializeError(error, false).stack).toBeUndefined();
+    expect(serializeError(error, true).stack).toBe(error.stack);
+  });
+
+  it('ignores a non-string/number `code` and a missing own `data`', () => {
+    const error = new Error('x') as Error & { code: unknown };
+    error.code = { not: 'valid' };
+
+    const serialized = serializeError(error, false);
+    expect(serialized.code).toBeUndefined();
+    expect('data' in serialized).toBe(false);
   });
 });
