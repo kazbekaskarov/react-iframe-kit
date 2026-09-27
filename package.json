@@ -1,0 +1,163 @@
+{
+  "name": "react-iframe-kit",
+  "version": "0.0.0",
+  "description": "Hooks-first React toolkit for iframes: portal rendering, auto-resize and a typed RPC bridge in one package.",
+  "keywords": [
+    "react",
+    "iframe",
+    "portal",
+    "resize",
+    "postmessage",
+    "rpc",
+    "hooks",
+    "micro-frontends"
+  ],
+  "license": "MIT",
+  "author": "Kazbek Askarov",
+  "homepage": "https://github.com/kazbekaskarov/react-iframe-kit#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kazbekaskarov/react-iframe-kit.git"
+  },
+  "bugs": "https://github.com/kazbekaskarov/react-iframe-kit/issues",
+  "type": "module",
+  "sideEffects": false,
+  "files": [
+    "dist"
+  ],
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.cts",
+  "exports": {
+    ".": {
+      "development": {
+        "import": {
+          "types": "./dist/index.d.ts",
+          "default": "./dist/dev/index.js"
+        },
+        "require": {
+          "types": "./dist/index.d.cts",
+          "default": "./dist/dev/index.cjs"
+        }
+      },
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./child": {
+      "development": {
+        "import": {
+          "types": "./dist/child/index.d.ts",
+          "default": "./dist/dev/child/index.js"
+        },
+        "require": {
+          "types": "./dist/child/index.d.cts",
+          "default": "./dist/dev/child/index.cjs"
+        }
+      },
+      "import": {
+        "types": "./dist/child/index.d.ts",
+        "default": "./dist/child/index.js"
+      },
+      "require": {
+        "types": "./dist/child/index.d.cts",
+        "default": "./dist/child/index.cjs"
+      }
+    },
+    "./child/react": {
+      "development": {
+        "import": {
+          "types": "./dist/child/react.d.ts",
+          "default": "./dist/dev/child/react.js"
+        },
+        "require": {
+          "types": "./dist/child/react.d.cts",
+          "default": "./dist/dev/child/react.cjs"
+        }
+      },
+      "import": {
+        "types": "./dist/child/react.d.ts",
+        "default": "./dist/child/react.js"
+      },
+      "require": {
+        "types": "./dist/child/react.d.cts",
+        "default": "./dist/child/react.cjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "typesVersions": {
+    "*": {
+      "child": [
+        "./dist/child/index.d.cts"
+      ],
+      "child/react": [
+        "./dist/child/react.d.cts"
+      ]
+    }
+  },
+  "unpkg": "./dist/child.global.js",
+  "jsdelivr": "./dist/child.global.js",
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsdown",
+    "dev": "tsdown --watch",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.node.json",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test",
+    "check:package": "publint --strict && attw --pack . --profile node16",
+    "size": "size-limit",
+    "changeset": "changeset",
+    "release": "pnpm build && changeset publish"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "react-dom": ">=18"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
+    "react-dom": {
+      "optional": true
+    }
+  },
+  "packageManager": "pnpm@12.6.0",
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.5",
+    "@biomejs/biome": "^2.5.14",
+    "@changesets/cli": "^3.0.3",
+    "@playwright/test": "^1.63.0",
+    "@size-limit/preset-small-lib": "^14.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@types/node": "^26.6.3",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "@vitest/coverage-v8": "^5.0.2",
+    "happy-dom": "^20.14.5",
+    "publint": "^0.3.24",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "size-limit": "^14.0.1",
+    "tsdown": "^0.23.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.1",
+    "vitest": "^5.0.2"
+  }
+}

@@ -1,0 +1,777 @@
+# react-iframe-kit — Design
+
+> Status: draft, pre-v1. This document is the source of truth for the wire protocol
+> and public API. Changes to either should update this file in the same PR.
+
+## Goals
+
+One TypeScript-first, hooks-first React library for the three things that are
+currently spread across separate packages:
+
+| Concern | Prior art | Here |
+|---|---|---|
+| Render React children into an iframe | react-frame-component | `<Frame>`, `useIframe` |
+| Size the iframe to its content | iframe-resizer | `useIframeResize`, `<Frame resize>`, child `autoResize` |
+| Typed messaging between parent and iframe | Penpal, Comlink | `useIframeRPC`, `useIframeEvent`, `connectToParent` |
+
+All three share one connection per iframe, so using resize and RPC together costs
+a single handshake.
+
+### Non-goals
+
+- Wire compatibility with iframe-resizer or Penpal.
+- Deep, Comlink-style proxies. `remote` is a flat method map (one level, see
+  [RPC](#rpc-and-events-api)); nested objects, functions and callbacks never cross
+  the boundary.
+- Rendering into cross-origin iframes (impossible by design; use RPC instead).
+- Popups (`window.opener`), workers, and relaying through nested frames. v1 covers
+  parent ↔ direct child iframe only.
+  - Plain nesting still works: a page can be a child of its parent and a parent of
+    its own iframes at the same time. Each link is an independent connection; the
+    child role only accepts `ack`/`syn` from `window.parent`. What is out of scope is
+    routing messages across several levels.
+
+## Compatibility
+
+- React `>=18` (peer dependency). CI runs the suite against React 18 and 19.
+- Browsers: last 2 versions of Chrome, Edge, Firefox; Safari ≥ 15.4. Output target
+  ES2020. Required APIs: `MessageChannel`, `ResizeObserver`, `MutationObserver`.
+- **Independent deploys are the normal case.** The host app and the embedded page
+  are usually released separately and run different versions of this library. The
+  wire protocol is therefore versioned independently of the npm package
+  (see [Versioning](#versioning)).
+
+## Package layout
+
+One npm package, subpath exports:
+
+| Entry | Runs in | Depends on React | Contents |
+|---|---|---|---|
+| `react-iframe-kit` | parent | yes | `<Frame>`, `useFrame`, `useIframe`, `useIframeResize`, `useIframeRPC`, `useIframeEvent`, `transfer`, `withOptions`, errors, types |
+| `react-iframe-kit/child` | iframe | no | `connectToParent`, `transfer`, `withOptions`, errors, types |
+| `react-iframe-kit/child/react` | iframe | yes | `useParent`, `useParentEvent` |
+
+The `child` entry also ships as an IIFE build (`dist/child.global.js`, global
+`ReactIframeKit`) for embedded pages that don't use a bundler (served via
+jsDelivr/unpkg).
+
+Internally, `src/core/` is framework-agnostic (protocol, handshake, RPC, events,
+size measurement). React code in `src/react/` only adapts core to hooks. This keeps
+core fully unit-testable and makes future Vue/Svelte adapters cheap.
+
+- `sideEffects: false`; ESM-first with CJS fallback.
+- `'use client'` is emitted only at the top of entries that use hooks.
+- Dev-only checks and warnings live in a separate build selected by the
+  `development` export condition, which Vite, webpack 5, Next.js and Vitest set in
+  dev. The `default` condition resolves to the production build, which contains no
+  dev code and no `process` references. It is therefore safe as unbundled ESM, and
+  the IIFE is built from it. The build does not rely on a
+  `typeof process !== 'undefined'` guard: under Vite that guard is always false
+  in the browser and would silently switch off every dev warning.
+- **Duplicate copies on one page are expected.** An embeddable SDK may bundle its
+  own copy of the library, and ESM and CJS copies can load side by side. All
+  copies with the same protocol major share one parent connection registry and one
+  child singleton. Both live on `globalThis` under
+  `Symbol.for('react-iframe-kit/v1')`. Without this, two copies would open two
+  connections to one iframe, and their sessions would keep replacing each other
+  in a reconnect loop.
+  - Copies of *different library versions* then call into each other's objects.
+    The object stored under the key is therefore a small, documented internal
+    interface (acquire/release, send, subscribe), frozen for the lifetime of the
+    key. An incompatible change to it means a new key (`/v2`).
+  - `FrameContext` is created once and stored in the same place. `useFrame` from one
+    copy then works inside a `<Frame>` from another.
+  - Error classes may also exist in several copies: one per library copy, and one
+    per entry if the bundler duplicates them. `instanceof` therefore goes through a
+    `static [Symbol.hasInstance]` that checks a global brand
+    (`Symbol.for('react-iframe-kit/error')`) and `code`. It works across copies,
+    entries and versions. `isIframeKitError(e)` is exported for code that avoids
+    `instanceof`. Within one copy, entries share core through common chunks
+    rather than duplicating it.
+
+Size budgets (min+gzip, enforced by size-limit per import scenario):
+
+| Scenario | Budget |
+|---|---|
+| `<Frame>` only | ≤ 2 kB |
+| `useIframeResize` + `useIframeRPC` | ≤ 4 kB |
+| entire parent entry | ≤ 5 kB |
+| `child` (incl. `autoResize`) | ≤ 2 kB |
+
+## Two modes
+
+| | Same-origin (portal) | Cross-origin (`src=URL`) |
+|---|---|---|
+| Rendering | `createPortal` into the iframe document | the embedded page renders itself |
+| Resize | parent measures the iframe document directly | child measures itself and reports over the port |
+| RPC / events | not needed (shared JS realm), but supported | over the handshake-established `MessagePort` |
+| Code inside iframe | none | `react-iframe-kit/child` |
+
+**Mode detection happens after each native `load` of the iframe, never earlier.**
+Before the first `load`, every iframe holds an initial `about:blank` that inherits
+the parent's origin, so `contentDocument` is readable even when `src` is
+cross-origin. Detecting at that point would pick the wrong mode; it is the same
+class of bug as facebook/react#22847. On every `load`:
+
+- `contentDocument` readable → same-origin mode;
+- `contentDocument` is `null` or access throws → cross-origin mode.
+
+The mode is re-evaluated on every `load`, because the iframe may navigate across
+origins.
+
+## Portal mode and the Firefox fix (facebook/react#22847)
+
+**Bug:** when an `<iframe>` is inserted, browsers create an initial `about:blank`
+document synchronously. If React portals into that document (e.g. from a ref callback),
+Firefox later replaces it with a new document on `load`, and the portaled content
+disappears.
+
+**Fix:**
+
+1. The iframe is given a `srcdoc` (`<!DOCTYPE html>…<body data-rik-root>`). This also
+   puts the document in standards mode. `about:blank` is quirks mode, which silently
+   breaks CSS.
+2. The mount node is taken only after the native `load` event for that document. The
+   listener is attached natively in the ref callback, not via React's `onLoad`.
+3. Fallback: if the document is already the final one (`readyState === 'complete'` and
+   the `data-rik-root` marker is present, or `URL === 'about:srcdoc'` for a user
+   srcdoc), mount immediately. `load` may already have fired, for example when
+   the server-rendered iframe loads before hydration.
+4. The mount node is recomputed on **every** `load`, so reloads and navigation don't
+   leave React rendering into a dead document.
+
+Regression test #1 in Playwright (Firefox) covers this.
+
+Constraints:
+
+- The `srcdoc` string must be stable: changing it reloads the iframe. A user-supplied
+  `srcDoc` must not be rebuilt on every render.
+- Portal mode needs same-origin access, and a `sandbox` without `allow-same-origin`
+  makes it impossible. `useIframe` then reports `error` (`RIK_INVALID_OPTIONS`) and
+  `<Frame>` renders nothing into the iframe and logs `console.error`. The
+  behaviour is the same in dev and prod. See [Error policy](#error-policy).
+
+### `useIframe` (headless primitive)
+
+```tsx
+const { frameProps, iframe, window, document, mountNode, error } = useIframe({ srcDoc });
+
+return (
+  <>
+    <iframe {...frameProps} title="Preview" />
+    {mountNode && createPortal(children, mountNode)}
+  </>
+);
+```
+
+- `frameProps` is `{ ref, srcDoc }` and must be spread onto the `<iframe>`.
+- `window`, `document` and `mountNode` are `null` until the final document has
+  loaded, and update on every `load`.
+- `srcDoc` is optional; the default is the marker document from step 1.
+
+### `<Frame>`
+
+`<Frame>` is `useIframe` plus context and conveniences. Props:
+
+- `children`: rendered into the iframe `<body>`.
+- `head`: nodes rendered into the iframe `<head>`.
+- `copyStyles`: see below.
+- `resize`: `boolean | ResizeOptions`, shorthand for `useIframeResize` on the same
+  element.
+- All other `<iframe>` attributes are forwarded. `ref` points at the iframe element.
+  One build serves React 18 and 19, so this uses `forwardRef`, which works on both.
+- With `resize`, the resized axis is owned by the library. A `height`/`width` in
+  `style` is used only as the size before the first measurement, and a dev warning
+  says so.
+
+`FrameContext` → `useFrame(): { window, document }`. This is required by CSS-in-JS
+libraries (emotion `CacheProvider`, styled-components `StyleSheetManager target`)
+and positioning libraries. Outside a `<Frame>`, `useFrame` returns the global
+`window`/`document`, so the same component works in both places. On the server both
+are `null`, and the types say so.
+
+`copyStyles: true` clones `<style>` and `<link rel=stylesheet>` from the parent
+`<head>` at mount. A `MutationObserver` then mirrors later additions, removals and
+text changes, which covers dev HMR and runtime CSS-in-JS injection.
+`adoptedStyleSheets` are copied by `cssText`. For CSS-in-JS, pointing the library at
+`useFrame().document.head` is faster and exact, and the docs recommend it.
+
+Nodes are copied with `importNode`, not rebuilt from text. Cloning keeps the `nonce`
+internal slot, which a strict host CSP needs: the srcdoc document inherits the
+host's CSP, and a nonce-less inline `<style>` would be blocked. It also keeps
+`integrity`/`crossorigin` on links.
+
+## Wire protocol (v1)
+
+Every message is a plain object with a marker that doubles as the protocol version:
+
+```ts
+{ rik: 1, type: string, ... }
+```
+
+- Messages without `rik` are ignored silently, so the library coexists with any other
+  postMessage traffic.
+- Messages with an unknown `rik` version are ignored with a dev-mode warning.
+- Every message is shape-validated (own properties, expected primitive types).
+  Malformed messages are dropped and logged when `debug` is on.
+- Unknown `type`s and unknown fields are ignored. This is what keeps additive
+  protocol changes backward compatible.
+
+### Handshake (over `window.postMessage`)
+
+| type | direction | fields |
+|---|---|---|
+| `syn` | child → parent | `instance`, `versions` |
+| `syn` | parent → child | `versions` (asks the child to announce itself) |
+| `ack` | parent → child | `session`, `instance` (echoed), `version`, transfers `port2` |
+
+Handshake messages always use the `rik: 1` envelope, even in future protocol
+versions, so that any two releases can at least see each other.
+`versions` lists the protocol versions the sender speaks (`[1]` today). The parent
+picks the highest version both sides support, returns it as `version` in `ack`, and
+all port traffic then uses that version. With no common version there is no `ack`,
+and a dev warning names both lists.
+
+```
+child                                         parent
+  | -- syn {instance, versions} --------------> |  targetOrigin '*' (carries no secrets)
+  |                                             |  check: event.source === iframe.contentWindow
+  |                                             |         event.origin === expected origin
+  | <-- ack {session, instance, version}        |
+  |         + [port2] ------------------------- |  targetOrigin = expected child origin
+  | check: event.source === window.parent     |
+  |        event.origin in allowedOrigins     |
+  |        ack.instance === own instance      |
+  | == ready (over port) ===================> |  connected on both sides
+```
+
+- **Both sides initiate.** This resolves the "who is listening first" race in both
+  directions.
+  - The child sends `syn` on start, in reply to a parent `syn` (after checking
+    `event.source === window.parent`), and on `pageshow` with `persisted` (restore
+    from the back/forward cache).
+  - The parent sends `syn` only while it is `connecting`. It sends one **every time it
+    enters `connecting`** (creation, `bye`, session loss) and on every iframe
+    `load` while connecting. Its targetOrigin is the expected child origin.
+    - The first rule closes a race. After a back/forward cache restore, the
+      child's `bye` (on the port) and its new `syn` (on the window) travel through
+      different queues, so the `syn` can arrive first. It is then ignored as a
+      duplicate for a still-open session. When the `bye` is processed afterwards,
+      the parent's own `syn` prompts the child again. Without this, nothing would
+      ever restart the handshake: a restore fires no `load`.
+- `instance` is a random id per child page load.
+  - The parent ignores a `syn` from an instance that already has a pending or open
+    session. Duplicate SYNs are expected.
+  - A `syn` from a new instance means the child reloaded: the old session is
+    closed (pending calls get `RIK_CONNECTION_LOST`) and a new one is started.
+- `ack` echoes `instance`. The child ignores an `ack` for another instance: this is
+  a stale ACK racing a reload.
+- An `ack` from an origin that is not in `allowedOrigins` is dropped, and a dev
+  warning names that origin. This is the most common integration mistake, and the
+  parent cannot see it: it only observes a stalled handshake.
+- `session` is a random id per parent connection. The child accepts an `ack` whose
+  session differs from its current one (the parent reconnected, e.g. after a hook
+  remount). It then closes the previous port and rejects that port's pending calls
+  with `RIK_CONNECTION_LOST`.
+- After `ack`, **all traffic goes over the private `MessagePort`**. There are no
+  per-message origin checks and no interference with other scripts' `message`
+  listeners. `MessagePort` delivery is ordered, so `ready` always arrives before
+  the child's first `call`.
+- **Liveness.** On `pagehide`, the child sends `bye` (best effort), closes its port
+  and moves to `connecting`. The parent then rejects pending calls promptly
+  instead of waiting for their timeout. If `bye` is lost, the loss is detected
+  when a new instance sends `syn`, or by the per-call timeout.
+
+### Port messages
+
+| type | fields | meaning |
+|---|---|---|
+| `ready` | — | child → parent, handshake complete |
+| `call` | `id`, `method`, `args` | RPC request |
+| `result` | `id`, `ok: true`, `value` | RPC success |
+| `result` | `id`, `ok: false`, `error: SerializedError` | RPC failure |
+| `event` | `name`, `payload` | fire-and-forget event |
+| `size` | `width`, `height`, `loop?` | child content size; `loop: true` when the child's feedback-loop guard is holding growth |
+| `bye` | — | the sending side is disposing or unloading |
+
+`cancel` (`id`) is reserved for remote-side cancellation after v1.
+
+`SerializedError = { name, message, code?, data?, stack? }`:
+
+- `code` is included when the thrown value has a string or number `code`.
+- `data` is included when the thrown value has an own `data` property that can be
+  structured-cloned.
+- `stack` is included **only when the responding side has `debug: true`**. Stacks leak
+  file paths and internals to another origin.
+- A thrown value that isn't an `Error` becomes `{ name: 'Error', message: String(value) }`.
+
+Payloads are structured-clone only; functions are never sent.
+`transfer(value, transferables)` returns a branded wrapper that is accepted as a call
+argument, a method's return value, or an event payload. The wrapper is unwrapped and
+its transferables are passed to `postMessage`.
+
+If `postMessage` throws `DataCloneError`, the error is contained:
+
+- on the caller side, the call rejects with `RIK_DATA_CLONE`;
+- on the responding side, a return value that can't be cloned is sent back as an
+  error result with `RIK_DATA_CLONE`.
+
+- `emit` never throws, whether it sends immediately or at queue flush, where
+  cloneability is only known then. An event whose payload can't be cloned is
+  dropped with `console.error` (`RIK_DATA_CLONE`).
+
+In all cases the connection stays open.
+
+### Versioning
+
+- `rik` is the **protocol** major version, independent of the npm version.
+- Additive changes (new message types, new optional fields) do not bump it, because
+  receivers ignore unknown types and fields.
+- `rik` is bumped only for incompatible changes. A library release that speaks
+  version N+1 also speaks N for at least one npm major. The version is negotiated in
+  the handshake (`versions` / `version`, see above); the handshake envelope itself
+  stays `rik: 1` forever.
+- Any protocol change needs an update to this file and a compatibility test
+  against the previously published `child` build.
+
+## Connection sharing
+
+Parent connections live in a `WeakMap<HTMLIFrameElement, Connection>` with reference
+counting. Every hook on the same iframe shares one connection.
+
+- Two users passing different `origin` values → `RIK_ORIGIN_CONFLICT`.
+- `methods` from several `useIframeRPC` calls are merged. The same method name
+  registered twice → `RIK_METHOD_CONFLICT`.
+- Hooks acquire the connection and register `methods` and event handlers in a
+  **layout effect**, not a passive one. Port messages are macrotasks and can run
+  between a commit and its passive effects. Otherwise a `call` or `event` arriving
+  right after connect could miss a method or handler from a component that was
+  mounted in the same commit. `useLayoutEffect` is swapped for a no-op on the
+  server.
+- Releasing is immediate for everything owned by that user: its `methods` and event
+  handlers are unregistered, and its pending and queued calls reject with
+  `RIK_DESTROYED`. This means a StrictMode re-mount never hits `RIK_METHOD_CONFLICT`,
+  and a method from an unmounted component is never called.
+- Only the transport teardown is **deferred by one macrotask** after the last user
+  releases. A re-acquire inside that window reuses the open port, so StrictMode double
+  mount/unmount causes no `bye` and no second handshake. Real disposal sends `bye`.
+
+On the child side there is one page-level connection with the same rules:
+reference counted, methods merged. Each `connectToParent` call returns a
+**handle** bound to it. `handle.dispose()` releases only that caller's methods,
+handlers and calls; the connection closes when the last handle is disposed. Two
+independent connections from one page would each send a `syn` with a different
+`instance`, and the parent would read that as a reload loop. How options from
+several callers combine:
+
+- `allowedOrigins` must be equal as sets, otherwise `RIK_ORIGIN_CONFLICT`;
+- `autoResize` is on if any caller enables it. Two different `measure` functions →
+  `RIK_INVALID_OPTIONS`;
+- `debug` is on if any caller enables it;
+- `timeout` / `connectTimeout` are per caller and apply to that caller's calls.
+
+The parent registry and the child singleton are shared across duplicate library
+copies (see [Package layout](#package-layout)).
+
+## RPC and events API
+
+A contract describes one side: its methods and the events it emits.
+
+```ts
+// shared/contract.ts
+import type { Side } from 'react-iframe-kit';
+
+export type ParentSide = Side<{
+  methods: { navigate(path: string): void; getUser(): User };
+  events: { themeChanged: 'light' | 'dark'; closed: void };
+}>;
+
+export type ChildSide = Side<{
+  methods: { setTheme(t: 'light' | 'dark'): void };
+  events: { submitted: { id: string } };
+}>;
+```
+
+Type rules:
+
+- Generic order is always `<Remote, Local>`: the other side first.
+- A remote method `(...args: A) => R` is exposed as `(...args: A) => Promise<Awaited<R>>`.
+- An event with a `void` payload is emitted without an argument: `emit('closed')`.
+- The method names `then` and `toJSON` are rejected at compile time by `Side<>`, and
+  at runtime with `RIK_INVALID_OPTIONS`. `remote` hides both names (see below), so
+  such methods could never be called.
+- `Side<>` rejects function-typed arguments, return values and event payloads at
+  compile time, since they would fail with `DataCloneError` at runtime.
+  Some losses can't be expressed in types, and the docs spell them out: class
+  instances arrive as plain objects without their prototype, and getters and
+  symbol keys are dropped.
+
+Hooks take `IframeTarget = HTMLIFrameElement | null | RefObject<HTMLIFrameElement | null>`.
+A `RefObject` is resolved after every commit of the component that calls the hook,
+so swapping the element reconnects. If the `<iframe>` is rendered by a different
+component that can re-render on its own, pass the element instead (from state set
+by a callback ref, or from `useIframe().iframe`). A `RefObject` would not notice
+the swap.
+
+Parent:
+
+```ts
+const { remote, emit, status, error } = useIframeRPC<ChildSide, ParentSide>(iframeRef, {
+  origin: 'https://widget.example.com', // optional: defaults to the origin of iframe.src
+  methods: { navigate, getUser },       // checked against ParentSide['methods']
+  timeout: 10_000,                      // per call, from send to result; default 10s
+  connectTimeout: 30_000,               // max wait of a queued call; default 30s
+});
+await remote.setTheme('dark');          // Promise<void>
+emit('themeChanged', 'dark');
+useIframeEvent(iframeRef, 'submitted', (p) => { /* p: { id: string } */ });
+```
+
+Child:
+
+```ts
+import { connectToParent } from 'react-iframe-kit/child';
+
+const parent = connectToParent<ParentSide, ChildSide>({
+  allowedOrigins: ['https://app.example.com'], // required
+  methods: { setTheme },
+  autoResize: true,
+});
+await parent.remote.getUser();
+const off = parent.on('themeChanged', applyTheme);
+parent.emit('submitted', { id });
+await parent.whenConnected(); // resolves on the next `connected`; rejects RIK_DESTROYED on dispose
+parent.status;   // same values as the parent side
+parent.dispose();
+```
+
+Child with React: `useParent<Remote, Local>(options)` → `{ remote, emit, status }`
+(backed by the page singleton), and `useParentEvent(name, handler)`.
+
+### `remote`
+
+`remote` is a shallow `Proxy`. A method map sent in `ready` can't be used instead,
+because calls made before the connection exists must already work.
+
+- The `get` trap returns a cached function per method name, so `remote.x` keeps the
+  same identity across renders.
+- `then`, `toJSON` and symbol keys return `undefined`. This keeps `remote` from being
+  thenable, so `await` or `return remote` from an async function does not send a
+  `call`. It also stays safe to log and serialize.
+
+### Behaviour
+
+- **Queueing.** Calls and events made while not connected are queued in order and
+  flushed on connect.
+  - A queued call that is still unsent after `connectTimeout` rejects with
+    `RIK_TIMEOUT`. `connectTimeout: Infinity` is allowed.
+  - The queue holds at most 1,000 messages. On overflow the new call rejects and a
+    new event is dropped, both with `RIK_QUEUE_OVERFLOW` (the event case as a dev
+    warning).
+- **Timeout.** `timeout` runs from the moment the call is actually sent over the port.
+  Time spent in the queue is bounded separately by `connectTimeout`, so a slow
+  iframe load does not eat into the call's own timeout.
+- `remote` and `emit` are referentially stable across renders.
+- **Per-call options.** `withOptions(remote.method, { signal?, timeout? })` returns a
+  function with the same signature. A per-call `timeout` is needed for methods that
+  legitimately wait on a user, e.g. "open a dialog and resolve with the choice";
+  `timeout: Infinity` is allowed.
+  - Aborting before send removes the call from the queue.
+  - Aborting after send rejects locally with `signal.reason` (a standard
+    `AbortError` `DOMException`) and ignores the late result.
+  - Remote-side cancellation is out of scope for v1 (`cancel` is reserved).
+- **No parent.** If the child page is opened top-level (`window.parent === window`),
+  `connectToParent` sends nothing and stays `idle`. Calls are queued and reject
+  after `connectTimeout`, as with any unconnected call.
+- **Events are not buffered on the receiving side.** An event that arrives while no
+  handler is registered for its name is dropped.
+- Several handlers may be registered for one event, and they run in registration
+  order. A throwing handler is reported via `reportError` and does not stop the
+  others.
+- **Connection loss.** `bye`, a new child instance or a replaced session reject
+  pending sent calls with `RIK_CONNECTION_LOST` and move the status back to
+  `connecting`. New calls are queued for the next connection.
+- **Dispose.** On unmount or `dispose()`, pending and queued calls reject with
+  `RIK_DESTROYED`.
+- **Incoming calls.** A method is found only if it is an own property that is a
+  function (`Object.hasOwn(methods, name)`). Anything else, including
+  `constructor`, `toString` and `__proto__`, results in `RIK_METHOD_NOT_FOUND`. The
+  method is called with `this === undefined` and its result is awaited.
+- Local `methods` and event handlers may change between renders. The latest ones
+  are always used (through a ref), without reconnecting.
+- **Status** is `'idle' | 'connecting' | 'connected' | 'error'`:
+  - `idle`: no iframe element yet (parent), not framed, or running on the
+    server (child);
+  - `connecting`: waiting for the handshake, including after a connection loss;
+  - `connected`: the handshake is complete;
+  - `error`: terminal configuration error. `error` holds the `IframeKitError`
+    (`RIK_ORIGIN_CONFLICT`, `RIK_METHOD_CONFLICT` or `RIK_INVALID_OPTIONS`).
+  
+  A slow handshake is not an error. In dev, a connection still `connecting` after
+  10 s logs a warning with the likely causes: child script not loaded, origin
+  mismatch seen, `sandbox` flags.
+
+## Resize
+
+Parent:
+
+```ts
+const { width, height } = useIframeResize(iframeRef, {
+  axis: 'height',   // 'height' | 'width' | 'both', default 'height'
+  minHeight, maxHeight, minWidth, maxWidth,
+  apply: true,      // false: only report, don't touch iframe styles
+  onResize,         // (size) => void
+  onResizeLoop,     // feedback-loop guard tripped (either side)
+  origin,           // same meaning as in useIframeRPC; shares the connection
+});
+```
+
+Child: `connectToParent({ autoResize: true | { measure } })`.
+
+**The parent alone decides the axis.** The child always reports both `width` and
+`height`, and the parent applies only what `axis` asks for. There is a single
+source of truth, so the two sides can't disagree.
+
+### Measurement
+
+The child's `autoResize` and the parent's same-origin mode share one measurement
+routine.
+
+- **Height:** `Math.ceil(documentElement.getBoundingClientRect().height)`. This
+  handles collapsing margins and is consistent across browsers, unlike
+  `body.scrollHeight`.
+  - Sometimes `documentElement.scrollHeight` is larger: content overflows `<html>`
+    because of an `html, body { height: 100% }` reset or absolute/fixed content.
+    In that case `scrollHeight` is used and a dev warning is logged once. The size
+    can then grow but not shrink below the current viewport.
+- **Width:** `<html>` is always as wide as the viewport, so width can only be measured
+  when the child's root shrink-wraps. `axis: 'width' | 'both'` on the parent
+  requires `html { width: max-content }` (or `fit-content`) in the child. The
+  measurement is marked as viewport-bound when the root does not shrink-wrap, and
+  the parent then logs a dev warning. The same rect/`scrollWidth` rule applies.
+- Values are rounded up, so a fractional size never produces a 1px scrollbar.
+- `measure: (doc) => ({ width, height })` overrides measurement for exotic layouts.
+
+Triggers:
+
+- a `ResizeObserver` on `documentElement` and `body`;
+- a `MutationObserver` (subtree, child list, attributes, character data);
+- capture-phase `load` (images, iframes), `document.fonts` `loadingdone`,
+  `transitionend` and `animationend`;
+- connecting, which sends the initial size.
+
+Triggers are batched to one measurement per animation frame. A 100 ms timer is the
+fallback, because rAF is paused in hidden and `display: none` iframes. Unchanged
+sizes are skipped.
+
+A document that isn't rendered (an iframe that is `display: none` or inside a
+hidden tab) measures as `0 × 0`. Such measurements are not reported. Otherwise the
+parent would collapse the iframe, and it would flash back to full size when it
+became visible.
+
+### Applying (parent)
+
+- The parent sets `iframe.style.height`/`width` in px, clamped to min/max.
+  Border and padding are added when the iframe is `box-sizing: border-box`.
+- With `apply: false` the hook only reports sizes.
+- **The connection caches the last `size` it received.** The child reports only on
+  change, so a `useIframeResize` that mounts after the connection is up would
+  otherwise wait for the next content change. The cached size is applied
+  immediately on registration.
+- `size` values must be finite and non-negative, otherwise the message is dropped.
+  Everything else is trusted: the child decides its own size. For untrusted
+  embeds, set `maxHeight`/`maxWidth`; a hostile child could otherwise grow to push
+  host content around.
+- In cross-origin mode, if the connection is up but no `size` has arrived 5 s after
+  `useIframeResize` registered, a dev warning suggests enabling `autoResize` in
+  the child.
+- In same-origin mode, if the child also runs `autoResize`, the first `size` message
+  for the current document switches off direct measurement for that document.
+  The child opted in and knows its own layout.
+
+### Feedback-loop guard
+
+Content styled `height: 100vh` plus a margin or padding (or `100%` on a chain of
+ancestors) grows with the iframe forever. The guard runs wherever the viewport is
+known: in the child for `autoResize`, in the parent for same-origin mode.
+
+- **Signature:** `content − viewport = c` for the same `c ≠ 0`, while the viewport
+  has changed since the previous measurement. In other words, the content follows
+  the viewport.
+- **Trip:** after 30 consecutive matching measurements, growth freezes at the
+  current size. A dev warning names the likely cause, and `onResizeLoop` fires on
+  the parent. When the guard runs in the child, it reaches the parent through
+  `size.loop`.
+- The guard is tracked per axis.
+- **Recovery:** the guard resumes automatically on the first measurement that
+  breaks the pattern. A false positive, such as a long linear animation, therefore
+  only pauses growth briefly.
+
+## Security
+
+- **Parent expected origin:**
+  - an explicit `origin`;
+  - otherwise derived from the iframe's current `src` attribute on every handshake;
+  - a `srcdoc` attribute (which takes precedence over `src`, as in the browser),
+    `about:blank` or no `src` → the parent's own origin;
+  - an iframe sandboxed without `allow-same-origin` is never auto-derived to
+    `'null'`. The stalled-handshake warning points to `origin: 'null'` instead, so
+    the opaque-origin risk stays an explicit opt-in.
+
+  Every origin option is normalized with `new URL(value).origin`, so
+  `https://Example.com/` equals `https://example.com`. A value with a path, query or
+  hash, or one that is not a URL, is `RIK_INVALID_OPTIONS`. The only exception is
+  the literal `'null'`.
+  If the iframe navigates or redirects elsewhere, the handshake fails closed.
+  `'*'` is `RIK_INVALID_OPTIONS` unless `unsafeAllowAnyOrigin: true` is set.
+  `data:` and `javascript:` URLs have opaque origins, see below.
+- **Child `allowedOrigins` is always required.** The child can't reliably learn its
+  parent's origin: Firefox has no `location.ancestorOrigins`.
+  - Entries are exact origin strings (normalized as above) or `RegExp`s. An
+    unanchored `RegExp` (without `^…$`) logs a dev warning.
+  - A `RegExp` with the `g` or `y` flag is `RIK_INVALID_OPTIONS`. With those flags,
+    `test()` is stateful through `lastIndex`, so the same origin would be allowed
+    and rejected on alternate calls.
+  - `'*'` requires `unsafeAllowAnyOrigin: true`.
+- Every message that establishes a session (child `syn` at the parent, `ack` at the
+  child) is checked for `event.source` **and** `event.origin`. The `contentWindow`
+  identity survives navigation, so a source check alone is not enough.
+- The parent's `syn` is only a prompt and carries nothing, so the child checks only
+  `event.source` before replying. Its reply is the same public `syn` it broadcasts
+  anyway.
+- **Opaque origins.** A child sandboxed without `allow-same-origin` has
+  `event.origin === 'null'`. The parent has to opt in with `origin: 'null'`. Only
+  `event.source` identifies the child in that case, and the `ack` must be posted
+  with targetOrigin `'*'`. If the child document is replaced between `syn` and
+  `ack`, the port could reach the new document. This risk is documented: don't
+  expose privileged methods to opaque-origin children. On the child side, an
+  opaque parent must be listed as `'null'` in `allowedOrigins`.
+- Messages are shape-validated and malformed ones are dropped. Method lookup uses
+  own properties only. Event handler registries are `Map`s, so an event named
+  `__proto__` is just a name. There are no dynamic property paths and no `eval`.
+- Error stacks cross the boundary only with `debug: true`.
+- The docs include recommended `sandbox` and CSP settings (`frame-src` on the host,
+  `frame-ancestors` on the child). They also note that `allow-scripts` +
+  `allow-same-origin` on same-origin content is equivalent to no sandbox.
+
+## SSR
+
+- Entries that use hooks start with `'use client'`.
+- On the server, `<Frame>` renders an `<iframe>` with its `srcdoc`, and nothing touches
+  `document` until mounted. The browser may finish loading the iframe before
+  hydration; step 3 of the Firefox fix covers that case.
+- The embedded page is often SSR'd too (Next.js etc.). Importing `react-iframe-kit/child`
+  on the server must not touch `window`, and there is no top-level side effect. On
+  the server `useParent` returns `status: 'idle'` and connects in an effect after
+  hydration. `connectToParent` called on the server is a no-op that stays `idle`.
+- Tests: a `renderToString` smoke test, a hydration test in which the iframe
+  loads before `hydrateRoot`, and a server render of a `useParent` component.
+
+## Errors
+
+All errors extend `IframeKitError` with a stable `code` and an optional `cause`.
+
+| code | when |
+|---|---|
+| `RIK_TIMEOUT` | no result within `timeout` (`phase: 'response'`), or still queued after `connectTimeout` (`phase: 'connect'`) |
+| `RIK_CONNECTION_LOST` | the peer sent `bye`, reloaded, or its session was replaced while the call was pending |
+| `RIK_DESTROYED` | the local connection was disposed (unmount, `dispose()`) |
+| `RIK_METHOD_NOT_FOUND` | the remote has no own function with that name |
+| `RIK_REMOTE_ERROR` | the remote method threw; see `RemoteError` |
+| `RIK_DATA_CLONE` | an argument, return value or payload could not be structured-cloned |
+| `RIK_QUEUE_OVERFLOW` | more than 1,000 messages queued while not connected |
+| `RIK_ORIGIN_CONFLICT` | two users of one iframe passed different origins |
+| `RIK_METHOD_CONFLICT` | two users registered the same method name |
+| `RIK_INVALID_OPTIONS` | e.g. `'*'` without `unsafeAllowAnyOrigin`, no `allowedOrigins` on the child, `<Frame>` in a sandbox without `allow-same-origin` |
+
+### Error policy
+
+- **Hooks and components never throw for configuration or connection problems.** A
+  throw during render would take down the host app's tree over an embed. Instead:
+  - hooks move to `status: 'error'` with `error` set (`useIframe` exposes `error`);
+  - `<Frame>` renders nothing into the iframe;
+  - `console.error` is logged in every build.
+- **Imperative APIs** (`connectToParent`, `transfer`, `withOptions`) throw
+  synchronously on invalid options.
+- **Calls** reject; they never throw synchronously.
+- Behaviour is identical in dev and prod. Dev builds only add warnings; they never
+  change control flow.
+
+### `RemoteError`
+
+`RemoteError` has `name === 'RemoteError'` and the remote `message`. Its `cause` holds
+the `SerializedError`, so callers branch on `err.cause.name` / `err.cause.code`.
+
+An abort rejects with `signal.reason` (a standard `AbortError`), not with an
+`IframeKitError`.
+
+Messages from an unexpected origin are not errors: they are dropped (logged with
+`debug`), and the dev warning for a stalled handshake mentions them.
+
+`debug: true` logs all protocol traffic to the console.
+
+## Testing
+
+- **Vitest** (happy-dom): core protocol, handshake state machine, RPC, events, size
+  logic, with mocked `postMessage`/`MessageEvent`/`MessageChannel`. Target 100% on
+  `src/core`.
+- **Playwright** (chromium, firefox, webkit): real iframes, including cross-origin via
+  two dev-server ports. Mandatory cases:
+  - the Firefox #22847 regression;
+  - StrictMode double mount (asserts a single handshake);
+  - child reload/reconnect, and a stale `ack` racing a reload;
+  - back/forward cache restore;
+  - an opaque-origin sandboxed child;
+  - the resize feedback-loop guard, including a long animated accordion that must
+    not trip it;
+  - `copyStyles` mirroring of styles injected at runtime;
+  - the iframe loading before hydration;
+  - two library copies (ESM + CJS) on one page share one connection;
+  - child page opened top-level stays `idle`;
+  - a long-running call with a per-call `timeout: Infinity`;
+  - back/forward cache restore where the `syn` overtakes the `bye`;
+  - a `call` arriving right after connect, before sibling components' passive
+    effects have run;
+  - `useIframeResize` mounted after connect gets the current size immediately;
+  - a hidden iframe (`display: none`) does not collapse to 0;
+  - `instanceof IframeKitError` across two library copies;
+  - `copyStyles` under a host CSP with `style-src 'nonce-…'`.
+- **Version skew:** the parent from `main` against the last published `child` build,
+  and vice versa.
+- React 18 and 19 matrix in CI.
+
+## Tooling
+
+TypeScript (strict) · tsdown (ESM + CJS + child IIFE, dts, publint + attw checks) ·
+Vitest · Playwright · Biome (lint + format) · size-limit · changesets ·
+GitHub Actions · `npm publish --provenance`. Package manager: pnpm.
+
+## Open questions
+
+These can't be settled on paper and need to be resolved by a prototype before v1.
+
+1. **Does facebook/react#22847 still reproduce** on current React + Firefox? The
+   project's positioning depends on it (roadmap step 2).
+2. **Trusted Types.** `srcdoc` is a `TrustedHTML` sink, so a host with
+   `require-trusted-types-for 'script'` blocks a plain string. We need to verify
+   how React 18 and 19 pass a `TrustedHTML` value through the `srcDoc` prop.
+   Fallback plan: set `srcdoc` natively in the ref callback through a named policy
+   (`react-iframe-kit`) that hosts can allowlist.
+3. **Thresholds.** The values here are starting points to be tuned against the
+   Playwright scenarios: the 30-measurement loop guard, the 100 ms rAF fallback, the
+   1,000-message queue, and the 10 s / 5 s dev warnings.
+4. **Size budgets.** The `child` budget (≤ 2 kB) is at risk given everything the
+   entry contains. The budgets are fixed from the first real implementation, not
+   guessed now.
+
+## Roadmap to v1
+
+1. Scaffold, CI, contributor hygiene.
+2. Minimal Firefox #22847 repro on current React + Firefox. Confirm that the bug still
+   reproduces, since the project's positioning depends on it.
+3. `useIframe` + `<Frame>` (+ `copyStyles`) + Playwright regression + SSR/hydration tests.
+4. Same-origin resize, including the feedback-loop guard.
+5. Core protocol + `child` entry (ESM + IIFE) + cross-origin resize.
+6. RPC + events.
+7. Version-skew test harness; docs site (VitePress or Starlight) with live sandbox,
+   comparison table, and security (sandbox/CSP) guide.

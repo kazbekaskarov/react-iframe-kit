@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>react-iframe-kit e2e child</title>
+  </head>
+  <body>
+    <p id="child">child</p>
+    <script type="module">
+      document.getElementById('child').dataset.origin = location.origin;
+    </script>
+  </body>
+</html>

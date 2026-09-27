@@ -1,0 +1,12 @@
+node_modules/
+dist/
+coverage/
+playwright-report/
+test-results/
+blob-report/
+*.tsbuildinfo
+*.log
+.DS_Store
+
+# Local Claude Code settings (per-machine permissions)
+.claude/settings.local.json
