@@ -95,10 +95,10 @@ Size budgets (min+gzip, React excluded, enforced by size-limit per import scenar
 | Scenario | Budget | Measured (step 6) |
 |---|---|---|
 | `useIframe` only | ≤ 1 kB | 0.91 kB |
-| `useIframeResize` only (pulls in the handshake/connection, not RPC) | ≤ 5 kB | 4.67 kB |
-| `<Frame>` (portal + resize + copyStyles) | ≤ 6.5 kB | 5.95 kB |
+| `useIframeResize` only (pulls in the handshake/connection, not RPC) | ≤ 5 kB | 4.75 kB |
+| `<Frame>` (portal + resize + copyStyles) | ≤ 6.5 kB | 6.03 kB |
 | `useIframeRPC` + `useIframeEvent` | ≤ 6.5 kB | 5.86 kB |
-| entire parent entry | ≤ 9.5 kB | 9.17 kB |
+| entire parent entry | ≤ 9.5 kB | 9.26 kB |
 | `child` entry (`connectToParent` with RPC + `autoResize`) | ≤ 6 kB | 5.82 kB |
 | `child/react` entry (`useParent`, `useParentEvent`) | ≤ 7 kB | 6.68 kB |
 | `child` IIFE | ≤ 6 kB | 5.78 kB |
@@ -658,6 +658,8 @@ became visible.
 - The parent sets `iframe.style.height`/`width` in px, clamped to min/max.
   Border and padding are added when the iframe is `box-sizing: border-box`.
 - With `apply: false` the hook only reports sizes.
+- Changing `min*`/`max*`, `axis` or `apply` re-applies the last content size right
+  away. Otherwise a new limit would only take effect on the next content change.
 - **The connection caches the last `size` it received.** The child reports only on
   change, so a `useIframeResize` that mounts after the connection is up would
   otherwise wait for the next content change. The cached size is applied

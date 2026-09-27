@@ -38,6 +38,18 @@ const axesOf = (axis: ResizeAxis) => ({
   height: axis === 'height' || axis === 'both',
 });
 
+/** Sets the iframe's size from a content size, per the current `apply`/`axis`/limits. */
+function applyContentSize(iframe: HTMLIFrameElement, size: Size, options: UseIframeResizeOptions) {
+  const { apply = true, axis = 'height', minWidth, maxWidth, minHeight, maxHeight } = options;
+  if (!apply) return;
+  const axes = axesOf(axis);
+  applySize(
+    iframe,
+    axes.width ? clamp(size.width, minWidth, maxWidth) : undefined,
+    axes.height ? clamp(size.height, minHeight, maxHeight) : undefined,
+  );
+}
+
 /**
  * Sizes an iframe to its content, same-origin or cross-origin. See docs/design.md →
  * Resize.
@@ -64,6 +76,14 @@ export function useIframeResize(
 
   // Dev warnings already shown by this hook instance.
   const warned = useRef(new Set<string>());
+
+  // The last content size committed for the current iframe, so that changing the
+  // limits, `axis` or `apply` takes effect without waiting for the content to change.
+  const lastSize = useRef<Size | null>(null);
+  const { apply, axis, minWidth, maxWidth, minHeight, maxHeight } = options;
+  useIsomorphicLayoutEffect(() => {
+    if (iframe && lastSize.current) applyContentSize(iframe, lastSize.current, optionsRef.current);
+  }, [iframe, apply, axis, minWidth, maxWidth, minHeight, maxHeight]);
 
   // Hooks acquire the connection in a layout effect, not a passive one: port messages
   // are macrotasks and can arrive between a commit and its passive effects.
@@ -103,28 +123,14 @@ export function useIframeResize(
     let noSizeTimer: ReturnType<typeof setTimeout> | undefined;
 
     const commit = (width: number, height: number, loopStarted: boolean) => {
-      const {
-        apply = true,
-        onResize,
-        onResizeLoop,
-        minWidth,
-        maxWidth,
-        minHeight,
-        maxHeight,
-        axis = 'height',
-      } = optionsRef.current;
+      const { onResize, onResizeLoop } = optionsRef.current;
+      lastSize.current = { width, height };
       setSize((prev) =>
         prev && prev.width === width && prev.height === height ? prev : { width, height },
       );
       onResize?.({ width, height });
       if (loopStarted) onResizeLoop?.();
-      if (!apply) return;
-      const axes = axesOf(axis);
-      applySize(
-        iframe,
-        axes.width ? clamp(width, minWidth, maxWidth) : undefined,
-        axes.height ? clamp(height, minHeight, maxHeight) : undefined,
-      );
+      applyContentSize(iframe, { width, height }, optionsRef.current);
     };
 
     const onLocalMeasurement = (measurement: Measurement) => {
@@ -245,6 +251,7 @@ export function useIframeResize(
       unsubscribeSize();
       if (noSizeTimer !== undefined) clearTimeout(noSizeTimer);
       connection.release();
+      lastSize.current = null;
     };
   }, [iframe]);
 
