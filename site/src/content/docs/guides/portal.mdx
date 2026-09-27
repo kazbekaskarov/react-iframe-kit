@@ -24,7 +24,7 @@ import { Frame } from 'react-iframe-kit';
 | `head` | Rendered into the iframe's `<head>`, e.g. `<style>` or `<link>`. |
 | `copyStyles` | Mirror the parent's `<style>` and `<link rel="stylesheet">` into the iframe, including ones added later. |
 | `resize` | `true` to follow the content's height, or [`useIframeResize` options](/react-iframe-kit/guides/resize/). |
-| `srcDoc` | A custom document. Keep the string stable: changing it reloads the iframe. |
+| `srcDoc` | A custom document, as a string or a `TrustedHTML` ([Trusted Types](/react-iframe-kit/guides/security/#trusted-types)). Keep it stable: changing it reloads the iframe. |
 | anything else | Forwarded to the `<iframe>`. `ref` points at the iframe element. |
 
 Inside a `<Frame>`, `useFrame()` returns the iframe's `window` and `document`. CSS-in-JS

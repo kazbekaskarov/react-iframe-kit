@@ -92,13 +92,13 @@ core fully unit-testable and makes future Vue/Svelte adapters cheap.
 Size budgets (min+gzip, React excluded, enforced by size-limit per import scenario;
 `.size-limit.json` is the source of truth):
 
-| Scenario | Budget | Measured (step 6) |
+| Scenario | Budget | Measured |
 |---|---|---|
-| `useIframe` only | ≤ 1 kB | 0.91 kB |
+| `useIframe` only | ≤ 1.5 kB | 1.25 kB |
 | `useIframeResize` only (pulls in the handshake/connection, not RPC) | ≤ 5 kB | 4.75 kB |
-| `<Frame>` (portal + resize + copyStyles) | ≤ 6.5 kB | 6.03 kB |
+| `<Frame>` (portal + resize + copyStyles) | ≤ 6.5 kB | 6.3 kB |
 | `useIframeRPC` + `useIframeEvent` | ≤ 6.5 kB | 5.86 kB |
-| entire parent entry | ≤ 9.5 kB | 9.26 kB |
+| entire parent entry | ≤ 10 kB | 9.52 kB |
 | `child` entry (`connectToParent` with RPC + `autoResize`) | ≤ 6 kB | 5.82 kB |
 | `child/react` entry (`useParent`, `useParentEvent`) | ≤ 7 kB | 6.68 kB |
 | `child` IIFE | ≤ 6 kB | 5.78 kB |
@@ -106,6 +106,9 @@ Size budgets (min+gzip, React excluded, enforced by size-limit per import scenar
 `<Frame>` is the batteries-included component; size-sensitive users build on
 `useIframe`. Module-level calls such as `forwardRef(...)` must be marked
 `/* @__PURE__ */`, otherwise bundlers keep them and tree-shaking of the entry breaks.
+`useIframe` grew from 0.91 kB (budget 1 kB) when it took over setting `srcdoc`
+through a Trusted Types policy (see [Trusted Types](#trusted-types)); the budgets for
+it and the parent entry were raised to 1.5 kB and 10 kB.
 `useIframeResize` jumped from step 4's 1.51 kB because it now always acquires a
 connection (needed for cross-origin and for the same-origin "child also runs
 autoResize" override, see [Applying](#applying-parent)) — the handshake/connection
@@ -162,7 +165,10 @@ fix below covers both.
 
 1. The iframe is given a `srcdoc` (`<!DOCTYPE html>…<body data-rik-root>`). This also
    puts the document in standards mode. `about:blank` is quirks mode, which silently
-   breaks CSS.
+   breaks CSS. The hook sets `srcdoc` on the element itself in its layout effect, not
+   as a React prop, so that it can go through a Trusted Types policy (see
+   [Trusted Types](#trusted-types)). It skips the assignment when the attribute
+   already holds that document, so a re-run effect doesn't reload the iframe.
 2. The mount node is taken only after the native `load` event for that document. The
    listener is attached natively, not via React's `onLoad`, in a layout effect of the
    same commit that receives the element: state set from a ref callback is flushed
@@ -171,7 +177,8 @@ fix below covers both.
    means `readyState === 'complete'`, `URL === 'about:srcdoc'`, and, for the default
    srcdoc, the `data-rik-root` marker on `<body>` (`isFinalDocument` in
    `src/core/document.ts`). `load` may already have fired, for example when the
-   server-rendered iframe loads before hydration.
+   effect re-runs for a new `srcDoc` value with the same content (a fresh
+   `TrustedHTML` object) after the document has loaded.
 4. The mount node is recomputed on **every** `load`, so reloads and navigation don't
    leave React rendering into a dead document.
 
@@ -204,10 +211,13 @@ return (
 );
 ```
 
-- `frameProps` is `{ ref, srcDoc }` and must be spread onto the `<iframe>`.
+- `frameProps` is `{ ref }` and must be spread onto the `<iframe>`. The hook sets
+  `srcdoc` itself; see [Trusted Types](#trusted-types).
 - `window`, `document` and `mountNode` are `null` until the final document has
   loaded, and update on every `load`.
-- `srcDoc` is optional; the default is the marker document from step 1.
+- `srcDoc` is optional; the default is the marker document from step 1. It may be a
+  string or a `TrustedHTML` (typed structurally as `TrustedHTMLLike`, because
+  TypeScript's `lib.dom` only gained `TrustedHTML` after 5.6).
 
 ### `<Frame>`
 
@@ -745,18 +755,59 @@ known: in the child for `autoResize`, in the parent for same-origin mode.
   `frame-ancestors` on the child). They also note that `allow-scripts` +
   `allow-same-origin` on same-origin content is equivalent to no sandbox.
 
+### Trusted Types
+
+`srcdoc` is a `TrustedHTML` sink. On a host with `require-trusted-types-for 'script'`
+(Chromium, Firefox and WebKit all enforce it now), assigning a plain string throws.
+Rendering it as a React prop doesn't work either: React stringifies the value before
+`setAttribute`, so even a `TrustedHTML` passed to `<iframe srcDoc>` is blocked, and
+the throw during commit takes down the host app's whole tree (measured with React
+19.3 in all three engines). Setting it outside React avoids depending on React's
+Trusted Types handling in any version.
+
+So `useIframe` sets `srcdoc` itself (`src/core/srcdoc.ts`):
+
+- **Default document:** when the page has `trustedTypes`, it goes through a policy
+  named **`react-iframe-kit`**. The policy creates exactly one document, the fixed
+  marker document, which has nothing that can run script, and throws for any other
+  input. It never passes caller HTML through, so allowing the name in a
+  `trusted-types` directive can't be used to smuggle markup.
+- **Custom `srcDoc`:** assigned as given. Under enforcement it must be a
+  `TrustedHTML` from one of the host's policies (or pass the host's `default`
+  policy). The library doesn't bless caller strings.
+- **Blocked:** if the policy name is refused (a `trusted-types` directive without
+  it), the default document is assigned as a string, which a host `default` policy
+  may still accept. If the assignment throws, `useIframe` reports
+  `RIK_INVALID_OPTIONS` (with the browser's error as `cause`) and `<Frame>` renders
+  nothing into the iframe, per the [error policy](#error-policy). The message names
+  the fix.
+- A policy name can be created only once per page unless the directive says
+  `'allow-duplicates'`, so library copies share the policy through the registry
+  (`srcdocPolicies`, one per window's `trustedTypes` factory). A copy of a future
+  protocol major would find no shared policy and fall back to the string; hosts that
+  run two majors side by side need `'allow-duplicates'`.
+- Content React renders into the iframe is not a sink, and neither is `copyStyles`
+  (`importNode`). `dangerouslySetInnerHTML` inside the iframe is subject to the
+  inherited policy as usual.
+
+`e2e/trusted-types.spec.ts` covers all of this in the three engines.
+
 ## SSR
 
 - Entries that use hooks start with `'use client'`.
-- On the server, `<Frame>` renders an `<iframe>` with its `srcdoc`, and nothing touches
-  `document` until mounted. The browser may finish loading the iframe before
-  hydration; step 3 of the Firefox fix covers that case.
+- On the server, `<Frame>` renders a plain `<iframe>` without `srcdoc`, and nothing
+  touches `document` until mounted. The `srcdoc` is set on the client, where it can
+  go through a Trusted Types policy; it isn't needed earlier, since portaled content
+  only appears after hydration anyway. The server-rendered iframe loads an
+  `about:blank` before hydration, which the marker check (step 3 of the Firefox fix)
+  never mistakes for the final document.
 - The embedded page is often SSR'd too (Next.js etc.). Importing `react-iframe-kit/child`
   on the server must not touch `window`, and there is no top-level side effect. On
   the server `useParent` returns `status: 'idle'` and connects in an effect after
   hydration. `connectToParent` called on the server is a no-op that stays `idle`.
-- Tests: a `renderToString` smoke test, a hydration test in which the iframe
-  loads before `hydrateRoot`, and a server render of a `useParent` component.
+- Tests: a `renderToString` smoke test (no `srcdoc` in the markup), a hydration test
+  in which the iframe loads before `hydrateRoot`, and a server render of a
+  `useParent` component.
 
 ## Errors
 
@@ -773,7 +824,7 @@ All errors extend `IframeKitError` with a stable `code` and an optional `cause`.
 | `RIK_QUEUE_OVERFLOW` | more than 1,000 messages queued while not connected |
 | `RIK_ORIGIN_CONFLICT` | two users of one iframe passed different origins |
 | `RIK_METHOD_CONFLICT` | two users registered the same method name |
-| `RIK_INVALID_OPTIONS` | e.g. `'*'` without `unsafeAllowAnyOrigin`, no `allowedOrigins` on the child, `<Frame>` in a sandbox without `allow-same-origin` |
+| `RIK_INVALID_OPTIONS` | e.g. `'*'` without `unsafeAllowAnyOrigin`, no `allowedOrigins` on the child, `<Frame>` in a sandbox without `allow-same-origin`, a `srcdoc` the host's Trusted Types policy blocks |
 
 ### Error policy
 
@@ -843,7 +894,12 @@ Messages from an unexpected origin are not errors: they are dropped (logged with
     deferred RPC release (see [Connection sharing](#connection-sharing)) showed up;
   - `copyStyles` under a host CSP of `style-src 'nonce-…'` (`e2e/csp.spec.ts`; the
     e2e dev server sends the header for that one fixture): copied styles keep their
-    nonce, and a nonce-less style stays blocked both on the host and in the iframe.
+    nonce, and a nonce-less style stays blocked both on the host and in the iframe;
+  - `<Frame>` under Trusted Types (`e2e/trusted-types.spec.ts`, one CSP per case):
+    rendering, `copyStyles` and resize with the policy allowed by default and by
+    name; a refused policy and a blocked custom string reported as
+    `RIK_INVALID_OPTIONS` while the host app keeps running; a custom `srcDoc` given
+    as `TrustedHTML`.
   
   Covered by Vitest instead of Playwright, because the state machine is what's under
   test (not browser-specific behavior) and a real `MessageChannel` pair already
@@ -905,11 +961,10 @@ These can't be settled on paper and need to be resolved by a prototype before v1
    Firefox ≤ 146 (incl. ESR 140), fixed in 147/148; the same race exists in every
    browser once a `srcdoc` is used. See [Portal mode](#portal-mode-and-the-firefox-fix-facebookreact22847).
    Positioning: "mounts only into the final document", not "fixes a current Firefox bug".
-2. **Trusted Types.** `srcdoc` is a `TrustedHTML` sink, so a host with
-   `require-trusted-types-for 'script'` blocks a plain string. We need to verify
-   how React 18 and 19 pass a `TrustedHTML` value through the `srcDoc` prop.
-   Fallback plan: set `srcdoc` natively in the ref callback through a named policy
-   (`react-iframe-kit`) that hosts can allowlist.
+2. ~~**Trusted Types.**~~ Resolved 2026-09-28: React stringifies `srcDoc`, so a host
+   enforcing Trusted Types crashed on `<Frame>` in every engine. The fallback plan
+   shipped: the hook sets `srcdoc` itself through a `react-iframe-kit` policy. See
+   [Trusted Types](#trusted-types).
 3. **Thresholds.** The 30-measurement loop guard and the 100 ms rAF fallback shipped
    in step 4 unchanged, and the resize-specific 5 s "no size arrived" warning shipped
    in step 5 unchanged; none have needed tuning yet. The 1,000-message queue and the

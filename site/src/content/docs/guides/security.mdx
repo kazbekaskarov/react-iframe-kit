@@ -89,6 +89,31 @@ A `<Frame>` document is a `srcdoc` document, and it inherits the host page's CSP
 - `copyStyles` clones the parent's style elements with their nonce, so mirrored styles
   keep working under a nonce-based policy.
 
+### Trusted Types
+
+With `require-trusted-types-for 'script'`, the browser only accepts a `TrustedHTML` for an
+iframe's `srcdoc`. `<Frame>` and `useIframe` set it through their own policy, named
+`react-iframe-kit`, which can create exactly one document: the library's empty default one.
+It never passes your HTML through, so allowing the name is safe.
+
+If your policy lists allowed names, add it:
+
+```http
+Content-Security-Policy: require-trusted-types-for 'script'; trusted-types react-iframe-kit
+```
+
+A custom `srcDoc` isn't passed through that policy. Create it with one of your own:
+
+```tsx
+const preview = trustedTypes.createPolicy('preview', { createHTML: sanitize });
+
+<Frame srcDoc={preview.createHTML(html)} />
+```
+
+If the page blocks the document anyway, `useIframe` reports `RIK_INVALID_OPTIONS` in
+`error` with a message that names the fix, and `<Frame>` renders nothing into the iframe.
+The rest of your app keeps running.
+
 ## Other defaults
 
 - Messages are validated field by field, and malformed ones are dropped.
