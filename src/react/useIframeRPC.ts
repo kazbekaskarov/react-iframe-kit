@@ -125,7 +125,10 @@ export function useIframeRPC<
       clearTimeout(entry.releaseTimer);
     } else {
       const current = optionsRef.current;
+      // Never thrown from a hook (see docs/design.md → Error policy): surfaced as
+      // `status: 'error'` and logged in every build.
       const fail = (error: unknown) => {
+        console.error(error);
         deferred.fail(error);
         setState({ status: 'error', error: error as IframeKitError });
       };

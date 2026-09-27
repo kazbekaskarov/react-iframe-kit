@@ -89,6 +89,8 @@ export function useParent<
           } as ConnectToParentOptions),
         };
       } catch (error) {
+        // See useIframeRPC: surfaced as `status: 'error'` and logged, never thrown.
+        console.error(error);
         deferred.fail(error);
         setState({ status: 'error', error: error as IframeKitError });
         return () => {
