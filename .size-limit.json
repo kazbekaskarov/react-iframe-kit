@@ -8,11 +8,11 @@
     "gzip": true
   },
   {
-    "name": "useIframeResize only",
+    "name": "useIframeResize only (incl. handshake/connection)",
     "path": "dist/index.js",
     "import": "{ useIframeResize }",
     "ignore": ["react", "react-dom"],
-    "limit": "1.75 kB",
+    "limit": "4.5 kB",
     "gzip": true
   },
   {
@@ -20,28 +20,28 @@
     "path": "dist/index.js",
     "import": "{ Frame }",
     "ignore": ["react", "react-dom"],
+    "limit": "6 kB",
+    "gzip": true
+  },
+  {
+    "name": "parent entry (everything, pre-RPC)",
+    "path": "dist/index.js",
+    "import": "*",
+    "ignore": ["react", "react-dom"],
+    "limit": "6.5 kB",
+    "gzip": true
+  },
+  {
+    "name": "child entry (everything, pre-RPC)",
+    "path": "dist/child/index.js",
+    "import": "*",
     "limit": "3.5 kB",
     "gzip": true
   },
   {
-    "name": "parent entry (everything)",
-    "path": "dist/index.js",
-    "import": "*",
-    "ignore": ["react", "react-dom"],
-    "limit": "5 kB",
-    "gzip": true
-  },
-  {
-    "name": "child entry (everything)",
-    "path": "dist/child/index.js",
-    "import": "*",
-    "limit": "2 kB",
-    "gzip": true
-  },
-  {
-    "name": "child IIFE (<script> build)",
+    "name": "child IIFE (<script> build, pre-RPC)",
     "path": "dist/child.global.js",
-    "limit": "2 kB",
+    "limit": "3.5 kB",
     "gzip": true
   }
 ]
