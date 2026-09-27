@@ -8,6 +8,12 @@
 export interface Registry {
   /** React context for `<Frame>` / `useFrame`, created by the first copy that needs it. */
   frameContext?: unknown;
+  /** One `ParentConnectionImpl` per iframe element. See core/parentConnection.ts. */
+  parentConnections?: WeakMap<HTMLIFrameElement, unknown>;
+  /** The page's single `ChildConnectionImpl`, if this page has ever called `connectToParent`. */
+  childConnection?: unknown;
+  /** Generated once per page load, reused by every `connectToParent` caller. */
+  childInstance?: string;
 }
 
 const KEY: unique symbol = Symbol.for('react-iframe-kit/v1');
