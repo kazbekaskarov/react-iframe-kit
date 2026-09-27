@@ -711,6 +711,15 @@ describe('events', () => {
     expect(handler).not.toHaveBeenCalled();
   });
 
+  it('acquire()’s `on` registers a handler the same way as onEvent', () => {
+    const { engine } = harness();
+    const handler = vi.fn();
+    const { on } = engine.acquire({}, {});
+    on('x', handler);
+    engine.handleEvent({ rik: 1, type: 'event', name: 'x', payload: 'p' });
+    expect(handler).toHaveBeenCalledWith('p');
+  });
+
   it('drops an unsendable payload with console.error instead of throwing', () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
     const { engine } = harness();

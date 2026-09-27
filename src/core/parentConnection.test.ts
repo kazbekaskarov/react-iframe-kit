@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { IframeKitError } from './errors';
 import { acquireParentConnection, type ParentConnection } from './parentConnection';
+import { RpcEngine } from './rpc';
 
 interface FakeChildWindow {
   postMessage: ReturnType<typeof vi.fn>;
@@ -462,5 +463,190 @@ describe('release and disposal', () => {
 
     connection.release();
     await waitFor(() => receivedBye);
+  });
+});
+
+describe('rpc', () => {
+  /** Collects every message the parent sends to the child over `port`. */
+  function inbox(port: MessagePort): Array<Record<string, unknown>> {
+    const received: Array<Record<string, unknown>> = [];
+    port.addEventListener('message', (e) => received.push((e as MessageEvent).data));
+    port.start();
+    return received;
+  }
+
+  it('queues a call made while connecting, sends it once ready, and resolves with the result', async () => {
+    const { iframe, child } = createIframe();
+    const connection = acquireParentConnection(iframe, {});
+    const { remote } = connection.acquireRpc({}, {}, RpcEngine);
+    const promise = remote['greet']?.('ann');
+
+    const port = await connect(connection, child, 'i1', location.origin);
+    const received = inbox(port);
+    await waitFor(() => received.some((m) => m['type'] === 'call'));
+    const call = received.find((m) => m['type'] === 'call');
+    expect(call).toMatchObject({ method: 'greet', args: ['ann'] });
+
+    port.postMessage({ rik: 1, type: 'result', id: call?.['id'], ok: true, value: 'hi ann' });
+    await expect(promise).resolves.toBe('hi ann');
+  });
+
+  it('answers an incoming call from the child with its local method', async () => {
+    const { iframe, child } = createIframe();
+    const connection = acquireParentConnection(iframe, {});
+    connection.acquireRpc(
+      {},
+      { methods: { add: (a, b) => (a as number) + (b as number) } },
+      RpcEngine,
+    );
+    const port = await connect(connection, child, 'i1', location.origin);
+    const received = inbox(port);
+
+    port.postMessage({ rik: 1, type: 'call', id: 'c1', method: 'add', args: [2, 3] });
+    await waitFor(() => received.some((m) => m['type'] === 'result'));
+    expect(received.find((m) => m['type'] === 'result')).toMatchObject({
+      id: 'c1',
+      ok: true,
+      value: 5,
+    });
+  });
+
+  it('delivers events both ways', async () => {
+    const { iframe, child } = createIframe();
+    const connection = acquireParentConnection(iframe, {});
+    const { emit, on } = connection.acquireRpc({}, {}, RpcEngine);
+    const handler = vi.fn();
+    on('submitted', handler);
+    const port = await connect(connection, child, 'i1', location.origin);
+    const received = inbox(port);
+
+    port.postMessage({ rik: 1, type: 'event', name: 'submitted', payload: { id: 'x' } });
+    await waitFor(() => handler.mock.calls.length > 0);
+    expect(handler).toHaveBeenCalledWith({ id: 'x' });
+
+    emit('themeChanged', 'dark');
+    await waitFor(() => received.some((m) => m['type'] === 'event'));
+    expect(received.find((m) => m['type'] === 'event')).toMatchObject({
+      name: 'themeChanged',
+      payload: 'dark',
+    });
+  });
+
+  it('bye rejects a pending call with RIK_CONNECTION_LOST', async () => {
+    const { iframe, child } = createIframe();
+    const connection = acquireParentConnection(iframe, {});
+    const { remote } = connection.acquireRpc({}, {}, RpcEngine);
+    const port = await connect(connection, child, 'i1', location.origin);
+    const promise = remote['slow']?.();
+
+    port.postMessage({ rik: 1, type: 'bye' });
+    await expect(promise).rejects.toMatchObject({ code: 'RIK_CONNECTION_LOST' });
+  });
+
+  it('a reloaded child (new instance) rejects a pending call with RIK_CONNECTION_LOST', async () => {
+    const { iframe, child } = createIframe();
+    const connection = acquireParentConnection(iframe, {});
+    const { remote } = connection.acquireRpc({}, {}, RpcEngine);
+    await connect(connection, child, 'i1', location.origin);
+    const promise = remote['slow']?.();
+
+    synFromChild(child, 'i2', location.origin);
+    await expect(promise).rejects.toMatchObject({ code: 'RIK_CONNECTION_LOST' });
+  });
+
+  it('debug: true also logs RPC traffic', async () => {
+    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    const { iframe, child } = createIframe();
+    const connection = acquireParentConnection(iframe, { debug: true });
+    const { emit } = connection.acquireRpc({}, {}, RpcEngine);
+    await connect(connection, child, 'i1', location.origin);
+    debug.mockClear();
+    emit('ping');
+    expect(debug).toHaveBeenCalledWith(
+      'react-iframe-kit →',
+      expect.objectContaining({ type: 'event', name: 'ping' }),
+    );
+  });
+});
+
+describe('port message edge cases', () => {
+  it('ignores a duplicate ready once the session is connected', async () => {
+    const { iframe, child } = createIframe();
+    const connection = acquireParentConnection(iframe, {});
+    const { remote } = connection.acquireRpc({}, {}, RpcEngine);
+    const port = await connect(connection, child, 'i1', location.origin);
+    const received: Array<Record<string, unknown>> = [];
+    port.addEventListener('message', (e) => received.push((e as MessageEvent).data));
+    port.start();
+
+    port.postMessage({ rik: 1, type: 'ready' });
+    // Still wired to the original port: a call made now reaches the child.
+    void remote['x']?.();
+    await waitFor(() => received.some((m) => m['type'] === 'call'));
+    expect(connection.status).toBe('connected');
+  });
+});
+
+describe('lazy RPC engine', () => {
+  it('answers a call with RIK_METHOD_NOT_FOUND when nothing on this side uses RPC', async () => {
+    const { iframe, child } = createIframe();
+    const connection = acquireParentConnection(iframe, {});
+    const port = await connect(connection, child, 'i1', location.origin);
+    const received: Array<Record<string, unknown>> = [];
+    port.addEventListener('message', (e) => received.push((e as MessageEvent).data));
+    port.start();
+
+    port.postMessage({ rik: 1, type: 'result', id: 'stray', ok: true }); // ignored
+    port.postMessage({ rik: 1, type: 'event', name: 'x' }); // ignored
+    port.postMessage({ rik: 1, type: 'call', id: 'c1', method: 'nope', args: [] });
+    await waitFor(() => received.length > 0);
+    expect(received).toEqual([
+      {
+        rik: 1,
+        type: 'result',
+        id: 'c1',
+        ok: false,
+        error: {
+          name: 'IframeKitError',
+          message: 'no method named "nope"',
+          code: 'RIK_METHOD_NOT_FOUND',
+        },
+      },
+    ]);
+  });
+
+  it('an engine created after connecting starts out connected, with debug carried over', async () => {
+    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    const { iframe, child } = createIframe();
+    const connection = acquireParentConnection(iframe, { debug: true });
+    const port = await connect(connection, child, 'i1', location.origin);
+    const received: Array<Record<string, unknown>> = [];
+    port.addEventListener('message', (e) => received.push((e as MessageEvent).data));
+    port.start();
+
+    debug.mockClear();
+    const { emit } = connection.acquireRpc({}, {}, RpcEngine);
+    emit('late');
+    await waitFor(() => received.some((m) => m['type'] === 'event'));
+    expect(debug).toHaveBeenCalledWith(
+      'react-iframe-kit →',
+      expect.objectContaining({ name: 'late' }),
+    );
+  });
+
+  it('reuses one engine for every RPC acquirer on the connection', async () => {
+    const { iframe, child } = createIframe();
+    const connection = acquireParentConnection(iframe, {});
+    connection.acquireRpc({}, { methods: { a: () => 'a' } }, RpcEngine);
+    connection.acquireRpc({}, { methods: { b: () => 'b' } }, RpcEngine);
+    const port = await connect(connection, child, 'i1', location.origin);
+    const received: Array<Record<string, unknown>> = [];
+    port.addEventListener('message', (e) => received.push((e as MessageEvent).data));
+    port.start();
+
+    port.postMessage({ rik: 1, type: 'call', id: 'c1', method: 'a', args: [] });
+    port.postMessage({ rik: 1, type: 'call', id: 'c2', method: 'b', args: [] });
+    await waitFor(() => received.length === 2);
+    expect(received.map((m) => m['value'])).toEqual(['a', 'b']);
   });
 });

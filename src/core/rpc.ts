@@ -6,6 +6,7 @@
  * the connection itself is shared); `acquire()` gives each caller its own `remote`/
  * `emit`, backed by shared dispatch tables, with per-acquirer cleanup on `release()`.
  */
+import { logProtocolMessage } from './debugLog';
 import { IframeKitError, RemoteError, type SerializedError, serializeError } from './errors';
 import { randomId } from './id';
 import { type CallMessage, type EventMessage, type ResultMessage, RIK } from './protocol';
@@ -20,7 +21,7 @@ type LocalMethod = (...args: unknown[]) => unknown;
 type EventHandler = (payload: unknown) => void;
 type Send = (
   message: CallMessage | ResultMessage | EventMessage,
-  transferables?: Transferable[],
+  transferables: Transferable[],
 ) => void;
 
 export interface RpcAcquireOptions {
@@ -32,6 +33,7 @@ export interface RpcAcquireOptions {
 export interface RpcHandle {
   remote: Record<string, RemoteMethod>;
   emit: (name: string, payload?: unknown) => void;
+  on: (name: string, handler: (payload: unknown) => void) => () => void;
   release: () => void;
 }
 
@@ -96,7 +98,7 @@ export class RpcEngine {
   /**
    * Registers `user`'s methods (throwing `RIK_METHOD_CONFLICT` for a name already
    * owned by a different user, `RIK_INVALID_OPTIONS` for `then`/`toJSON`) and
-   * returns its `remote`/`emit`/`release`.
+   * returns its `remote`/`emit`/`on`/`release`.
    */
   acquire(user: object, options: RpcAcquireOptions): RpcHandle {
     const methods = options.methods ?? {};
@@ -130,8 +132,9 @@ export class RpcEngine {
       this.call(user, method, args, callOptions);
     const remote = createRemote(call);
     const emit = (name: string, payload?: unknown) => this.emit(user, name, payload);
+    const on = (name: string, handler: EventHandler) => this.onEvent(user, name, handler);
     const release = () => this.release(user);
-    return { remote, emit, release };
+    return { remote, emit, on, release };
   }
 
   /** Merges into the connection's debug flag; there is no per-user unset. */
@@ -208,7 +211,7 @@ export class RpcEngine {
   }
 
   handleCall(message: CallMessage): void {
-    if (this.debug) console.debug('react-iframe-kit ←', message);
+    logProtocolMessage(this.debug, '←', message);
     void this.runLocalMethod(message);
   }
 
@@ -271,7 +274,7 @@ export class RpcEngine {
   }
 
   handleResult(message: ResultMessage): void {
-    if (this.debug) console.debug('react-iframe-kit ←', message);
+    logProtocolMessage(this.debug, '←', message);
     const entry = this.pending.get(message.id);
     if (!entry) return; // unknown id: a stale/duplicate result, or already settled locally (e.g. abort)
     this.pending.delete(message.id);
@@ -282,7 +285,7 @@ export class RpcEngine {
   }
 
   handleEvent(message: EventMessage): void {
-    if (this.debug) console.debug('react-iframe-kit ←', message);
+    logProtocolMessage(this.debug, '←', message);
     const handlers = this.eventHandlers.get(message.name);
     if (!handlers) return;
     for (const { handler } of handlers) {
@@ -459,14 +462,14 @@ export class RpcEngine {
 
   private sendRaw(
     message: CallMessage | ResultMessage | EventMessage,
-    transferables?: Transferable[],
+    transferables: Transferable[] = [],
   ): void {
     /* v8 ignore start: every call site already checks `this.send` (directly, or via
      * `connected()` having just set it) before reaching here; this guard only exists
      * so TypeScript can narrow `this.send` from `Send | null` to `Send`. */
     if (!this.send) return;
     /* v8 ignore stop */
-    if (this.debug) console.debug('react-iframe-kit →', message);
+    logProtocolMessage(this.debug, '→', message);
     this.send(message, transferables);
   }
 }

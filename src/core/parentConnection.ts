@@ -20,6 +20,7 @@ import {
   SUPPORTED_VERSIONS,
 } from './protocol';
 import { getRegistry } from './registry';
+import type { RpcAcquireOptions, RpcEngine, RpcHandle } from './rpc';
 
 export type ConnectionStatus = 'connecting' | 'connected';
 
@@ -42,6 +43,11 @@ export interface ParentConnection {
   onStatusChange(callback: (status: ConnectionStatus) => void): () => void;
   /** Fires immediately with the cached size if there is one, then on every new report. */
   onSize(callback: (size: CachedSize) => void): () => void;
+  /**
+   * `Engine` is passed in rather than imported so that resize-only users don't bundle
+   * RPC: the connection creates its engine on the first RPC acquire.
+   */
+  acquireRpc(user: object, options: RpcAcquireOptions, Engine: typeof RpcEngine): RpcHandle;
   release(): void;
 }
 
@@ -60,6 +66,7 @@ class ParentConnectionImpl implements ParentConnection {
   private explicitOrigin: string | undefined;
   /** On if any acquirer enabled it. See docs/design.md → Connection sharing. */
   private debug = false;
+  private rpc: RpcEngine | undefined;
 
   /** The instance we're either pending on or fully connected with. */
   private knownInstance: string | undefined;
@@ -92,7 +99,20 @@ class ParentConnectionImpl implements ParentConnection {
     }
     this.refCount++;
     if (options.origin !== undefined) this.explicitOrigin = options.origin;
-    if (options.debug) this.debug = true;
+    if (options.debug) {
+      this.debug = true;
+      this.rpc?.setDebug(true);
+    }
+  }
+
+  acquireRpc(user: object, options: RpcAcquireOptions, Engine: typeof RpcEngine): RpcHandle {
+    if (!this.rpc) {
+      const rpc = new Engine();
+      this.rpc = rpc;
+      rpc.setDebug(this.debug);
+      if (this.connectedPort) rpc.connected(portSender(this.connectedPort));
+    }
+    return this.rpc.acquire(user, options);
   }
 
   release(): void {
@@ -192,7 +212,8 @@ class ParentConnectionImpl implements ParentConnection {
 
     const channel = new MessageChannel();
     const session = randomId();
-    channel.port1.onmessage = this.handlePortMessage;
+    const port = channel.port1;
+    port.onmessage = (portEvent) => this.handlePortMessage(port, portEvent);
     channel.port1.start?.();
 
     // Target the origin we just validated, not the (possibly wildcard/derived)
@@ -215,22 +236,28 @@ class ParentConnectionImpl implements ParentConnection {
     if (this.status === 'connecting') this.sendSyn();
   };
 
-  private handlePortMessage = (event: MessageEvent): void => {
+  private handlePortMessage(port: MessagePort, event: MessageEvent): void {
     const message = parsePortMessage(event.data);
     if (!message) return;
-    logProtocolMessage(this.debug, '←', message);
 
-    // A switch, not if/else if: TypeScript proves this covers all of PortMessage's 3
+    // A switch, not if/else if: TypeScript proves this covers all of PortMessage's 6
     // members, and unlike an if-chain a switch with no default has no "else" branch
-    // for a coverage tool to flag as unreachable.
+    // for a coverage tool to flag as unreachable. `call`/`result`/`event` are logged
+    // by `RpcEngine` itself (it's reused standalone and logs its own traffic); the
+    // other three are logged here.
     switch (message.type) {
-      case 'ready':
-        this.connectedPort = this.pendingPort;
+      case 'ready': {
+        if (port !== this.pendingPort) return; // a duplicate ready for an already-connected session
+        logProtocolMessage(this.debug, '←', message);
+        this.connectedPort = port;
         this.pendingPort = undefined;
         this.status = 'connected';
         this.notifyStatus();
+        this.rpc?.connected(portSender(port));
         break;
+      }
       case 'size': {
+        logProtocolMessage(this.debug, '←', message);
         const size: CachedSize = {
           width: message.width,
           height: message.height,
@@ -241,12 +268,37 @@ class ParentConnectionImpl implements ParentConnection {
         break;
       }
       case 'bye':
+        logProtocolMessage(this.debug, '←', message);
         this.teardownPort(false);
         this.knownInstance = undefined;
         this.enterConnecting();
         break;
+      case 'call':
+        if (this.rpc) this.rpc.handleCall(message);
+        else {
+          // Nothing on this side registered methods (e.g. resize only), so there is
+          // no engine to ask; answer the way the engine would.
+          port.postMessage({
+            rik: RIK,
+            type: 'result',
+            id: message.id,
+            ok: false,
+            error: {
+              name: 'IframeKitError',
+              message: `no method named "${message.method}"`,
+              code: 'RIK_METHOD_NOT_FOUND',
+            },
+          });
+        }
+        break;
+      case 'result':
+        this.rpc?.handleResult(message);
+        break;
+      case 'event':
+        this.rpc?.handleEvent(message);
+        break;
     }
-  };
+  }
 
   private teardownPort(sendBye: boolean): void {
     const port = this.connectedPort ?? this.pendingPort;
@@ -262,6 +314,7 @@ class ParentConnectionImpl implements ParentConnection {
     port?.close();
     this.connectedPort = undefined;
     this.pendingPort = undefined;
+    this.rpc?.disconnected();
   }
 
   private dispose(): void {
@@ -301,4 +354,10 @@ export function acquireParentConnection(
   }
   connection.acquire({ origin, debug: options.debug });
   return connection;
+}
+
+/** Sends the engine's messages over `port`. The engine logs them itself. */
+function portSender(port: MessagePort) {
+  return (message: Parameters<MessagePort['postMessage']>[0], transferables: Transferable[]) =>
+    port.postMessage(message, transferables);
 }
