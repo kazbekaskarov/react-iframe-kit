@@ -92,14 +92,16 @@ core fully unit-testable and makes future Vue/Svelte adapters cheap.
 Size budgets (min+gzip, React excluded, enforced by size-limit per import scenario;
 `.size-limit.json` is the source of truth):
 
-| Scenario | Budget | Measured (step 5) |
+| Scenario | Budget | Measured (step 6) |
 |---|---|---|
-| `useIframe` only | ≤ 1 kB | 0.92 kB |
-| `useIframeResize` only (now pulls in the handshake/connection) | ≤ 4.5 kB | 4.13 kB |
-| `<Frame>` (portal + resize + copyStyles) | ≤ 6 kB | 5.41 kB |
-| entire parent entry, pre-RPC | ≤ 6.5 kB | 5.58 kB |
-| `child` entry, pre-RPC (`connectToParent` + `autoResize`) | ≤ 3.5 kB | 3.06 kB |
-| `child` IIFE, pre-RPC | ≤ 3.5 kB | 3.01 kB |
+| `useIframe` only | ≤ 1 kB | 0.91 kB |
+| `useIframeResize` only (pulls in the handshake/connection, not RPC) | ≤ 5 kB | 4.67 kB |
+| `<Frame>` (portal + resize + copyStyles) | ≤ 6.5 kB | 5.95 kB |
+| `useIframeRPC` + `useIframeEvent` | ≤ 6.5 kB | 5.86 kB |
+| entire parent entry | ≤ 9.5 kB | 9.17 kB |
+| `child` entry (`connectToParent` with RPC + `autoResize`) | ≤ 6 kB | 5.82 kB |
+| `child/react` entry (`useParent`, `useParentEvent`) | ≤ 7 kB | 6.68 kB |
+| `child` IIFE | ≤ 6 kB | 5.78 kB |
 
 `<Frame>` is the batteries-included component; size-sensitive users build on
 `useIframe`. Module-level calls such as `forwardRef(...)` must be marked
@@ -108,8 +110,13 @@ Size budgets (min+gzip, React excluded, enforced by size-limit per import scenar
 connection (needed for cross-origin and for the same-origin "child also runs
 autoResize" override, see [Applying](#applying-parent)) — the handshake/connection
 code is no longer resize-only. RPC + events (step 6) reuse this same connection
-rather than adding a second protocol layer, so their marginal cost should be smaller
-than this jump; budgets get one more pass then.
+rather than adding a second protocol layer. On the parent side the RPC engine
+(`src/core/rpc.ts`, ~2 kB) is not imported by the connection: `useIframeRPC` and
+`useIframeEvent` pass the engine class in on their first acquire, so resize-only
+users pay only for parsing the three extra message types (+0.2 kB). A connection
+with no engine answers an incoming `call` with `RIK_METHOD_NOT_FOUND` itself. The
+child can't do the same: every `connectToParent` handle has `remote`/`emit`/`on`,
+so the `child` entry and IIFE grew by about 2.7 kB.
 
 ## Two modes
 
@@ -388,18 +395,26 @@ counting. Every hook on the same iframe shares one connection.
   right after connect could miss a method or handler from a component that was
   mounted in the same commit. `useLayoutEffect` is swapped for a no-op on the
   server.
-- Releasing is immediate for everything owned by that user: its `methods` and event
-  handlers are unregistered, and its pending and queued calls reject with
-  `RIK_DESTROYED`. This means a StrictMode re-mount never hits `RIK_METHOD_CONFLICT`,
-  and a method from an unmounted component is never called.
-- Only the transport teardown is **deferred by one macrotask** after the last user
+- Releasing a user unregisters its `methods` and event handlers and rejects its
+  pending and queued calls with `RIK_DESTROYED`.
+  - `useIframeRPC` and `useParent` defer that release by **one macrotask**, like the
+    transport below. StrictMode's simulated unmount/remount then reuses the same
+    registration, so calls a mount effect just made are not rejected, and the
+    remount never hits `RIK_METHOD_CONFLICT`. The hook's method wrappers switch off
+    synchronously on unmount, so within that window its methods answer
+    `RIK_METHOD_NOT_FOUND`: a method from an unmounted component is never called.
+  - `useIframeEvent`/`useParentEvent` (handlers only, no calls to lose) and the
+    imperative `handle.dispose()` release immediately.
+- The transport teardown is **deferred by one macrotask** after the last user
   releases. A re-acquire inside that window reuses the open port, so StrictMode double
   mount/unmount causes no `bye` and no second handshake. Real disposal sends `bye`.
 
 On the child side there is one page-level connection with the same rules:
 reference counted, methods merged. Each `connectToParent` call returns a
 **handle** bound to it. `handle.dispose()` releases only that caller's methods,
-handlers and calls; the connection closes when the last handle is disposed. Two
+handlers and calls. The page connection itself stays open for the page's lifetime
+(it sends `bye` on `pagehide`): closing it when the last handle goes would only
+cost a new handshake the next time. Two
 independent connections from one page would each send a `syn` with a different
 `instance`, and the parent would read that as a reload loop. How options from
 several callers combine:
@@ -464,7 +479,7 @@ const { remote, emit, status, error } = useIframeRPC<ChildSide, ParentSide>(ifra
 });
 await remote.setTheme('dark');          // Promise<void>
 emit('themeChanged', 'dark');
-useIframeEvent(iframeRef, 'submitted', (p) => { /* p: { id: string } */ });
+useIframeEvent<ChildSide, 'submitted'>(iframeRef, 'submitted', (p) => { /* p: { id: string } */ });
 ```
 
 Child:
@@ -485,8 +500,20 @@ parent.status;   // same values as the parent side
 parent.dispose();
 ```
 
-Child with React: `useParent<Remote, Local>(options)` → `{ remote, emit, status }`
-(backed by the page singleton), and `useParentEvent(name, handler)`.
+Child with React: `useParent<Remote, Local>(options)` → `{ remote, emit, status, error }`
+(backed by the page singleton; options are read on mount, except `methods`), and
+`useParentEvent<Remote, Name>(name, handler)`.
+
+The event hooks take the event name as a second type argument because TypeScript
+can't infer one type argument while another is given explicitly. Without it, the
+payload is typed as the union of all the side's payloads.
+
+Besides `Side`, the contract types `Remote<S>` (the shape of `remote`),
+`LocalMethods<S>` (any subset of a side's methods, sync or async), `Emit<S>`,
+`On<S>` and `AnySide` (the default when no contract is given) are exported.
+`Side<>`'s function check looks through plain objects, arrays and tuples up to 8
+levels deep. Cloneable built-ins (`Date`, `RegExp`, `Map`, `Set`, `Blob`,
+`ArrayBuffer`, typed arrays and so on) and `any` are accepted as they are.
 
 ### `remote`
 
@@ -503,6 +530,12 @@ because calls made before the connection exists must already work.
 
 - **Queueing.** Calls and events made while not connected are queued in order and
   flushed on connect.
+  - This includes `useIframeRPC` while `idle`: no iframe element yet, e.g. one held
+    in state from a callback ref, so a mount effect runs before it is set. Such
+    calls wait in the hook (`src/core/deferredRpc.ts`), bounded by `connectTimeout`,
+    and then join the connection's queue, where `connectTimeout` applies again to
+    the handshake. The two waits are separate phases, so in that one case the total
+    can reach twice `connectTimeout`.
   - A queued call that is still unsent after `connectTimeout` rejects with
     `RIK_TIMEOUT`. `connectTimeout: Infinity` is allowed.
   - The queue holds at most 1,000 messages. On overflow the new call rejects and a
@@ -538,7 +571,9 @@ because calls made before the connection exists must already work.
   `constructor`, `toString` and `__proto__`, results in `RIK_METHOD_NOT_FOUND`. The
   method is called with `this === undefined` and its result is awaited.
 - Local `methods` and event handlers may change between renders. The latest ones
-  are always used (through a ref), without reconnecting.
+  are always used (through a ref), without reconnecting. The set of method *names*
+  is taken when the hook registers (on mount, or when the iframe element changes);
+  a name that later disappears from `methods` answers `RIK_METHOD_NOT_FOUND`.
 - **Status** is `'idle' | 'connecting' | 'connected' | 'error'`:
   - `idle`: no iframe element yet (parent), not framed, or running on the
     server (child);
@@ -549,7 +584,9 @@ because calls made before the connection exists must already work.
   
   A slow handshake is not an error. In dev, a connection still `connecting` after
   10 s logs a warning with the likely causes: child script not loaded, origin
-  mismatch seen, `sandbox` flags.
+  mismatch seen, `sandbox` flags. The warning lives in `useIframeRPC` and
+  `useParent`, not in the connection: a same-origin `useIframeResize` never needs
+  the handshake, and warning there would be noise.
 
 ## Resize
 
@@ -765,7 +802,10 @@ Messages from an unexpected origin are not errors: they are dropped (logged with
   `MessagePort` objects (mocking those specifically was not needed: Node/happy-dom's
   are spec-compliant, including their async, macrotask-based delivery — tests wait
   for it with `vi.waitFor` on the actual observable effect, not a fixed delay). RPC
-  and events join this suite in step 6. Enforced at 100% statement/branch/function/line
+  and events are covered here too: the engine (`rpc.ts`) on its own, and wired into
+  both connections. The `Side<>` contract types have type-level tests
+  (`contract.test.ts`, checked by `pnpm typecheck`: every `@ts-expect-error` must
+  really be an error). Enforced at 100% statement/branch/function/line
   on `src/core` (`vitest.config.ts`); a handful of provably-unreachable branches
   (`__DEV__` guards under the test build's `define`, and one exhaustive union match)
   are marked with `v8 ignore` and explained inline rather than counted.
@@ -787,7 +827,14 @@ Messages from an unexpected origin are not errors: they are dropped (logged with
     not trip it;
   - `copyStyles` mirroring of styles injected at runtime;
   - the iframe loading before hydration;
-  - a hidden iframe (`display: none`) does not collapse to 0.
+  - a hidden iframe (`display: none`) does not collapse to 0;
+  - RPC and events across origins with the React hooks on both sides
+    (`e2e/rpc.spec.ts`): calls both ways, a `RemoteError` carrying the remote `code`,
+    events both ways, a call made while `useIframeRPC` was still `idle`, the child
+    calling the parent right after connect, and a per-call `timeout: Infinity`
+    outliving a slow method that the default timeout rejects. Both fixtures run in
+    StrictMode and the spec fails on any page error; that is how the need for the
+    deferred RPC release (see [Connection sharing](#connection-sharing)) showed up.
   
   Covered by Vitest instead of Playwright, because the state machine is what's under
   test (not browser-specific behavior) and a real `MessageChannel` pair already
@@ -803,9 +850,6 @@ Messages from an unexpected origin are not errors: they are dropped (logged with
     setting up a second real bundled copy in one e2e fixture is its own chunk of
     work; the registry sharing itself (`src/core/registry.ts`) is already what both
     `useIframeResize` and `connectToParent` go through;
-  - a long-running call with `timeout: Infinity`, and a `call` arriving right after
-    connect before sibling components' passive effects run — need `useIframeRPC` to
-    exist (step 6);
   - `copyStyles` under a host CSP with `style-src 'nonce-…'` — needs a CSP-serving
     fixture, not yet built.
 - **Version skew:** the parent from `main` against the last published `child` build,
@@ -834,10 +878,10 @@ These can't be settled on paper and need to be resolved by a prototype before v1
 3. **Thresholds.** The 30-measurement loop guard and the 100 ms rAF fallback shipped
    in step 4 unchanged, and the resize-specific 5 s "no size arrived" warning shipped
    in step 5 unchanged; none have needed tuning yet. The 1,000-message queue and the
-   10 s "still connecting" warning are RPC-only (step 6) and remain unverified.
-4. ~~**Size budgets.**~~ Revised again in step 5 (see [Package layout](#package-layout));
-   `useIframeResize` now includes the handshake, and the `child` budget is measured
-   for the first time. One more pass is expected after step 6 (RPC + events).
+   10 s "still connecting" warning shipped in step 6 unchanged. Both are unit-tested
+   but not yet checked against real-world usage.
+4. ~~**Size budgets.**~~ Revised in steps 5 and 6 (see [Package layout](#package-layout)).
+   Injecting the RPC engine keeps it out of resize-only parent bundles.
 
 ## Roadmap to v1
 
@@ -853,9 +897,11 @@ These can't be settled on paper and need to be resolved by a prototype before v1
 5. ~~Core protocol + `child` entry (ESM + IIFE) + cross-origin resize.~~ Done:
    handshake (`src/core/parentConnection.ts`, `src/core/childConnection.ts`),
    `connectToParent`, `autoResize`, and `useIframeResize` now works cross-origin.
-   `debug: true` protocol logging shipped too (`src/core/debugLog.ts`), on the
-   connections but not yet on individual RPC calls (nothing to log there until
-   step 6). See [Testing](#testing) for what's covered and what's deferred.
-6. RPC + events.
+   `debug: true` protocol logging shipped too (`src/core/debugLog.ts`). See
+   [Testing](#testing) for what's covered and what's deferred.
+6. ~~RPC + events.~~ Done: `useIframeRPC`, `useIframeEvent`, `connectToParent`'s
+   `remote`/`emit`/`on`/`whenConnected`, `useParent`/`useParentEvent`, `transfer`,
+   `withOptions` and the `Side<>` contract types. RPC traffic is included in
+   `debug: true` logging.
 7. Version-skew test harness; docs site (VitePress or Starlight) with live sandbox,
    comparison table, and security (sandbox/CSP) guide.
