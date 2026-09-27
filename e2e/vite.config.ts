@@ -16,5 +16,14 @@ export default defineConfig({
       { find: /^react-iframe-kit$/, replacement: src('index.ts') },
     ],
   },
-  server: { host: '127.0.0.1', strictPort: true },
+  server: {
+    host: '127.0.0.1',
+    strictPort: true,
+    // A sandboxed-without-allow-same-origin fixture loads its ES modules from an
+    // opaque ("null") document origin; browsers apply CORS to `type="module"`
+    // fetches, so this reflects any request origin (including "null") the same
+    // way a real CDN would need to for that scenario. Only used by the e2e dev
+    // server, never in a built package.
+    cors: true,
+  },
 });
