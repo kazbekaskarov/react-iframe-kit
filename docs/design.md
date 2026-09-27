@@ -89,14 +89,21 @@ core fully unit-testable and makes future Vue/Svelte adapters cheap.
     `instanceof`. Within one copy, entries share core through common chunks
     rather than duplicating it.
 
-Size budgets (min+gzip, enforced by size-limit per import scenario):
+Size budgets (min+gzip, React excluded, enforced by size-limit per import scenario;
+`.size-limit.json` is the source of truth):
 
-| Scenario | Budget |
-|---|---|
-| `<Frame>` only | ≤ 2 kB |
-| `useIframeResize` + `useIframeRPC` | ≤ 4 kB |
-| entire parent entry | ≤ 5 kB |
-| `child` (incl. `autoResize`) | ≤ 2 kB |
+| Scenario | Budget | Measured (step 4) |
+|---|---|---|
+| `useIframe` only | ≤ 1 kB | 0.92 kB |
+| `useIframeResize` only | ≤ 1.75 kB | 1.51 kB |
+| `<Frame>` (portal + resize + copyStyles) | ≤ 3.5 kB | 3.15 kB |
+| `useIframeResize` + `useIframeRPC` | ≤ 4 kB | — |
+| entire parent entry | ≤ 5 kB | 3.32 kB |
+| `child` (incl. `autoResize`) | ≤ 2 kB | — |
+
+`<Frame>` is the batteries-included component; size-sensitive users build on
+`useIframe`. Module-level calls such as `forwardRef(...)` must be marked
+`/* @__PURE__ */`, otherwise bundlers keep them and tree-shaking of the entry breaks.
 
 ## Two modes
 
@@ -543,7 +550,7 @@ because calls made before the connection exists must already work.
 Parent:
 
 ```ts
-const { width, height } = useIframeResize(iframeRef, {
+const size = useIframeResize(iframeRef, { // { width, height } | null before the first measurement
   axis: 'height',   // 'height' | 'width' | 'both', default 'height'
   minHeight, maxHeight, minWidth, maxWidth,
   apply: true,      // false: only report, don't touch iframe styles
@@ -567,10 +574,13 @@ routine.
 - **Height:** `Math.ceil(documentElement.getBoundingClientRect().height)`. This
   handles collapsing margins and is consistent across browsers, unlike
   `body.scrollHeight`.
-  - Sometimes `documentElement.scrollHeight` is larger: content overflows `<html>`
-    because of an `html, body { height: 100% }` reset or absolute/fixed content.
-    In that case `scrollHeight` is used and a dev warning is logged once. The size
-    can then grow but not shrink below the current viewport.
+  - When content really overflows the viewport (`scrollHeight > clientHeight`) and
+    `scrollHeight` is larger than `<html>`'s box, e.g. with an
+    `html, body { height: 100% }` reset or absolute/fixed content, `scrollHeight` is
+    used and a dev warning is logged once. The size can then grow but not shrink below
+    the current viewport.
+  - `scrollHeight` is never used on its own: for `<html>` it never drops below the
+    viewport, so an iframe sized by it could grow but never shrink.
 - **Width:** `<html>` is always as wide as the viewport, so width can only be measured
   when the child's root shrink-wraps. `axis: 'width' | 'both'` on the parent
   requires `html { width: max-content }` (or `fit-content`) in the child. The
@@ -630,9 +640,14 @@ known: in the child for `autoResize`, in the parent for same-origin mode.
   the parent. When the guard runs in the child, it reaches the parent through
   `size.loop`.
 - The guard is tracked per axis.
-- **Recovery:** the guard resumes automatically on the first measurement that
-  breaks the pattern. A false positive, such as a long linear animation, therefore
-  only pauses growth briefly.
+- **Recovery:** the guard resumes automatically when the content changes, i.e. when
+  `content − viewport` differs from the value it tripped on. A false positive, such as
+  a long linear animation, therefore only pauses growth until the animation moves on.
+  - "The pattern breaks" is not a usable recovery rule: while growth is held the
+    viewport stops changing, so the pattern breaks on the very next measurement and
+    the loop would continue in bursts of 30.
+- Implementation: `src/core/loopGuard.ts`. Covered by e2e with a real `100vh + margin`
+  page (must trip and stay still) and a 1.5 s linear accordion (must not trip).
 
 ## Security
 
@@ -791,9 +806,9 @@ These can't be settled on paper and need to be resolved by a prototype before v1
    1,000-message queue, and the 10 s / 5 s dev warnings.
 4. **Size budgets.** The `child` budget (≤ 2 kB) is at risk given everything the
    entry contains. The budgets are fixed from the first real implementation, not
-   guessed now. First data point (roadmap step 3): `<Frame>` alone is 1.89 kB of its
-   2 kB budget (React excluded); the `resize` prop in step 4 will push it over, so
-   that budget needs revisiting then.
+   guessed now. Parent budgets were revised in step 4 from measurements (see
+   [Package layout](#package-layout)); the `child` budget gets the same treatment in
+   step 5.
 
 ## Roadmap to v1
 
@@ -801,8 +816,11 @@ These can't be settled on paper and need to be resolved by a prototype before v1
 2. ~~Minimal Firefox #22847 repro on current React + Firefox.~~ Done: see
    [Portal mode](#portal-mode-and-the-firefox-fix-facebookreact22847).
 3. ~~`useIframe` + `<Frame>` (+ `copyStyles`) + Playwright regression + SSR/hydration
-   tests.~~ Done, except `<Frame resize>`, which comes with step 4.
-4. Same-origin resize, including the feedback-loop guard.
+   tests.~~ Done.
+4. ~~Same-origin resize, including the feedback-loop guard.~~ Done: `useIframeResize`
+   and `<Frame resize>` for same-origin iframes. The connection-related parts of
+   [Applying](#applying-parent) (cached `size`, the missing-`autoResize` warning,
+   `size.loop`) come with step 5.
 5. Core protocol + `child` entry (ESM + IIFE) + cross-origin resize.
 6. RPC + events.
 7. Version-skew test harness; docs site (VitePress or Starlight) with live sandbox,
