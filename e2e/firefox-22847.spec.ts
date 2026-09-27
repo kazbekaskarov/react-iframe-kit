@@ -19,8 +19,8 @@ async function loadVariant(page: import('@playwright/test').Page, variant: strin
   return page.frameLocator('iframe[title="frame"]').getByTestId('portal-content');
 }
 
-test('mounting after the native load of the final document keeps the content', async ({ page }) => {
-  await expect(await loadVariant(page, 'srcdoc-load')).toBeVisible();
+test('<Frame> keeps the content across the document replacement', async ({ page }) => {
+  await expect(await loadVariant(page, 'frame')).toBeVisible();
 });
 
 test('mounting before the document is replaced loses the content (the bug)', async ({ page }) => {
