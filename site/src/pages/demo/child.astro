@@ -1,0 +1,22 @@
+---
+// The page the RPC demo embeds. A plain page, outside the docs layout.
+import ChildApp from '../../components/ChildApp';
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <meta name="robots" content="noindex" />
+    <title>react-iframe-kit demo child</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <ChildApp client:only="react" />
+  </body>
+</html>

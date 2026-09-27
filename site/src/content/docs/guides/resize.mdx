@@ -1,0 +1,78 @@
+---
+title: Auto-resize
+description: Size an iframe to its content, same-origin or cross-origin.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+```tsx
+import { useIframeResize } from 'react-iframe-kit';
+
+const ref = useRef<HTMLIFrameElement>(null);
+const size = useIframeResize(ref, { axis: 'height', maxHeight: 1600 });
+// size: { width, height } | null before the first measurement
+```
+
+| Option | Default | |
+|---|---|---|
+| `axis` | `'height'` | `'height'`, `'width'` or `'both'` |
+| `minHeight`, `maxHeight`, `minWidth`, `maxWidth` | none | Clamp the applied size. |
+| `apply` | `true` | `false` reports sizes without touching the iframe's style. |
+| `onResize` | | Called with every new content size. |
+| `onResizeLoop` | | Called when the feedback-loop guard starts holding growth. |
+| `measure` | | Replace the built-in measurement (same-origin only). |
+| `origin` | the origin of `src` | The iframe's expected origin (cross-origin). |
+
+`<Frame resize>` takes the same options.
+
+## Same-origin and cross-origin
+
+- **Same-origin** iframes are measured directly: nothing to do inside the iframe.
+- **Cross-origin** iframes can't be measured from outside, so the page inside reports its
+  own size:
+
+```ts
+import { connectToParent } from 'react-iframe-kit/child';
+
+connectToParent({ allowedOrigins: ['https://app.example.com'], autoResize: true });
+```
+
+The mode is detected again after every `load`, so an iframe that navigates between the
+two keeps working. If a same-origin child also runs `autoResize`, its reports take over:
+it knows its own layout.
+
+<Aside>
+  In dev, if the connection is up but no size has arrived 5 s after the hook started, a
+  warning suggests enabling `autoResize` in the child.
+</Aside>
+
+## Measuring width
+
+`<html>` is always as wide as the iframe, so width can only follow the content when the
+child's root shrink-wraps. For `axis: 'width'` or `'both'`, add this to the iframe's
+document:
+
+```css
+html { width: max-content; }
+```
+
+A dev warning tells you when it's missing.
+
+## The feedback-loop guard
+
+Content sized from the viewport, such as `height: 100vh` plus a margin, grows with the
+iframe forever: every resize makes the content taller again. When the content keeps
+following the viewport for 30 measurements in a row, growth is held at its current size,
+`onResizeLoop` fires and a dev warning names the likely cause. Growth resumes by itself
+as soon as the content changes.
+
+## Hidden iframes
+
+An iframe that is `display: none`, or in a background tab, measures as 0 × 0. Those
+measurements are skipped, so the iframe doesn't collapse and flash back when it becomes
+visible.
+
+<Aside type="caution">
+  A cross-origin child decides its own size. For untrusted content, set `maxHeight` (and
+  `maxWidth`): a hostile page could otherwise grow to push your page's content around.
+</Aside>

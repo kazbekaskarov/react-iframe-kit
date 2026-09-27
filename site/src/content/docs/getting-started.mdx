@@ -1,0 +1,106 @@
+---
+title: Getting started
+description: Install react-iframe-kit and pick the part you need.
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+<Aside>
+  These docs follow the `main` branch. The resize, protocol and RPC features described here
+  ship with the first release after `0.1.0`; `0.1.0` has `useIframe` and `<Frame>` only.
+</Aside>
+
+## Install
+
+<Tabs syncKey="pm">
+  <TabItem label="pnpm">`pnpm add react-iframe-kit`</TabItem>
+  <TabItem label="npm">`npm install react-iframe-kit`</TabItem>
+  <TabItem label="yarn">`yarn add react-iframe-kit`</TabItem>
+</Tabs>
+
+React 18 or 19 is a peer dependency. The package has three entry points:
+
+| Import | Use it in | Needs React | Gives you |
+|---|---|---|---|
+| `react-iframe-kit` | the page that owns the `<iframe>` | yes | `<Frame>`, `useFrame`, `useIframe`, `useIframeResize`, `useIframeRPC`, `useIframeEvent` |
+| `react-iframe-kit/child` | the page inside the iframe | no | `connectToParent` |
+| `react-iframe-kit/child/react` | the page inside the iframe | yes | `useParent`, `useParentEvent` |
+
+A page without a bundler can load the child entry from a CDN as a script; it defines a
+global `ReactIframeKit`:
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/react-iframe-kit/dist/child.global.js"></script>
+<script>
+  ReactIframeKit.connectToParent({ allowedOrigins: ['https://app.example.com'], autoResize: true });
+</script>
+```
+
+## Render React into an iframe
+
+When you own the content, render it straight into a same-origin iframe:
+
+```tsx
+import { Frame } from 'react-iframe-kit';
+
+<Frame title="Preview" resize copyStyles>
+  <Invoice data={invoice} />
+</Frame>;
+```
+
+More in [Portal rendering](/react-iframe-kit/guides/portal/).
+
+## Size a cross-origin iframe to its content
+
+The child page reports its size, and the parent applies it:
+
+```tsx
+// parent
+import { useIframeResize } from 'react-iframe-kit';
+
+const ref = useRef<HTMLIFrameElement>(null);
+useIframeResize(ref, { maxHeight: 2000 });
+return <iframe ref={ref} title="Widget" src="https://widget.example.com/" />;
+```
+
+```ts
+// child (https://widget.example.com)
+import { connectToParent } from 'react-iframe-kit/child';
+
+connectToParent({ allowedOrigins: ['https://app.example.com'], autoResize: true });
+```
+
+More in [Auto-resize](/react-iframe-kit/guides/resize/).
+
+## Call methods across the boundary
+
+```ts
+// shared/contract.ts
+import type { Side } from 'react-iframe-kit';
+
+export type ParentSide = Side<{ methods: { getUser(): { name: string } } }>;
+export type ChildSide = Side<{
+  methods: { setTheme(theme: 'light' | 'dark'): void };
+  events: { submitted: { id: string } };
+}>;
+```
+
+```tsx
+// parent
+const { remote, status } = useIframeRPC<ChildSide, ParentSide>(ref, {
+  methods: { getUser: () => currentUser },
+});
+await remote.setTheme('dark');
+```
+
+```ts
+// child
+const parent = connectToParent<ParentSide, ChildSide>({
+  allowedOrigins: ['https://app.example.com'],
+  methods: { setTheme },
+});
+const user = await parent.remote.getUser();
+```
+
+More in [RPC and events](/react-iframe-kit/guides/rpc/). Resize and RPC on the same iframe
+share one connection and one handshake.

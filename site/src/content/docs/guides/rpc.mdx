@@ -1,0 +1,150 @@
+---
+title: RPC and events
+description: Typed method calls and events between a page and its iframe.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+import RpcDemo from '../../../components/RpcDemo';
+
+## Try it
+
+This iframe is a separate page. The buttons call its methods; its buttons call this page
+and emit events. Everything goes over the real handshake.
+
+<RpcDemo client:only="react" />
+
+## Describe both sides
+
+A contract names one side's methods and the events it emits. Share it between both code
+bases:
+
+```ts
+import type { Side } from 'react-iframe-kit';
+
+export type ParentSide = Side<{
+  methods: { navigate(path: string): void; getUser(): User };
+  events: { themeChanged: 'light' | 'dark'; closed: void };
+}>;
+
+export type ChildSide = Side<{
+  methods: { setTheme(theme: 'light' | 'dark'): void };
+  events: { submitted: { id: string } };
+}>;
+```
+
+- Every remote method returns a promise: `getUser(): User` is called as
+  `await remote.getUser()`.
+- An event with a `void` payload is emitted without one: `emit('closed')`.
+- Values are copied with the structured clone algorithm. So `Side<>` makes functions in
+  arguments, return values or payloads a compile error, and `then`/`toJSON` can't be
+  method names. Some losses can't be expressed in types: class instances arrive as plain
+  objects, and getters and symbol keys are dropped.
+
+Generic arguments always come in the order `<Remote, Local>`: the other side first.
+
+## Parent
+
+```tsx
+import { useIframeEvent, useIframeRPC } from 'react-iframe-kit';
+
+const { remote, emit, status, error } = useIframeRPC<ChildSide, ParentSide>(ref, {
+  origin: 'https://widget.example.com', // optional: defaults to the origin of src
+  methods: { navigate, getUser },
+  timeout: 10_000,        // per call, from send to result
+  connectTimeout: 30_000, // how long a call may wait for the connection
+});
+
+await remote.setTheme('dark');
+emit('themeChanged', 'dark');
+
+useIframeEvent<ChildSide, 'submitted'>(ref, 'submitted', ({ id }) => save(id));
+```
+
+`status` is `'idle'` (no iframe element yet), `'connecting'`, `'connected'` or `'error'`.
+On `'error'`, `error` holds the configuration problem, such as `RIK_ORIGIN_CONFLICT` or
+`RIK_METHOD_CONFLICT`. Hooks never throw.
+
+<Aside title="Why the event name twice?">
+  TypeScript can't infer one type argument while another is given, so pass the event
+  name as a type argument too to type the payload exactly. Without it, the payload is the
+  union of all the side's payloads.
+</Aside>
+
+## Child
+
+Without React:
+
+```ts
+import { connectToParent } from 'react-iframe-kit/child';
+
+const parent = connectToParent<ParentSide, ChildSide>({
+  allowedOrigins: ['https://app.example.com'], // required
+  methods: { setTheme },
+  autoResize: true,
+});
+
+const user = await parent.remote.getUser();
+const off = parent.on('themeChanged', applyTheme);
+parent.emit('submitted', { id });
+await parent.whenConnected();
+parent.dispose();
+```
+
+With React:
+
+```tsx
+import { useParent, useParentEvent } from 'react-iframe-kit/child/react';
+
+const { remote, emit, status } = useParent<ParentSide, ChildSide>({
+  allowedOrigins: ['https://app.example.com'],
+  methods: { setTheme },
+});
+useParentEvent<ParentSide, 'themeChanged'>('themeChanged', applyTheme);
+```
+
+Several `connectToParent`/`useParent` calls on one page share a single connection. Their
+methods are merged, and registering one name twice is `RIK_METHOD_CONFLICT`.
+
+## Behaviour worth knowing
+
+- **Calls before connecting are queued**, in order with events, and flushed on connect.
+  A queued call rejects with `RIK_TIMEOUT` (`phase: 'connect'`) after `connectTimeout`.
+- **`timeout` starts when the call is actually sent**, so a slow iframe load doesn't eat
+  into it.
+- **Per call:** `withOptions(remote.method, { timeout, signal })`. `timeout: Infinity` is
+  allowed, e.g. for "open a dialog and resolve with the choice". An aborted signal
+  rejects with `signal.reason`.
+
+  ```ts
+  import { withOptions } from 'react-iframe-kit';
+
+  const choice = await withOptions(remote.confirm, { timeout: Infinity })('Delete?');
+  ```
+
+- **Errors** thrown by a remote method arrive as `RemoteError`. Its `cause` has the
+  remote `name`, `message`, `code` and own `data`:
+
+  ```ts
+  try {
+    await remote.save(draft);
+  } catch (error) {
+    if (error instanceof RemoteError && error.cause.code === 'E_CONFLICT') retry();
+  }
+  ```
+
+- **Losing the connection** (the iframe reloads or navigates) rejects the calls that were
+  already sent with `RIK_CONNECTION_LOST`. Queued calls wait for the next connection.
+- **Events aren't buffered on the receiving side:** an event with no handler registered
+  is dropped.
+- `remote` and `emit` keep the same identity across renders, and the latest `methods` and
+  handlers are always used without reconnecting.
+- **Large binary data:** `transfer(value, [buffer])` moves an `ArrayBuffer`, `MessagePort`
+  or similar instead of copying it.
+
+  ```ts
+  import { transfer } from 'react-iframe-kit';
+
+  await remote.upload(transfer(buffer, [buffer]));
+  ```
+
+- **Debugging:** `debug: true` on any hook or `connectToParent` logs every protocol message.

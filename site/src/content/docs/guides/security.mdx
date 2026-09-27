@@ -1,0 +1,100 @@
+---
+title: Security
+description: Origins, sandbox flags and Content Security Policy for embedded pages.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+An iframe is a trust boundary. react-iframe-kit checks origins on both sides, but the
+browser settings around the iframe matter just as much.
+
+## Origins
+
+**Parent.** `useIframeRPC`, `useIframeEvent` and `useIframeResize` accept the child only
+from its expected origin: the `origin` option, or else the origin of the iframe's current
+`src`. If the iframe navigates or redirects elsewhere, the handshake fails closed. Pass
+`origin` explicitly when the `src` may redirect.
+
+**Child.** `allowedOrigins` is always required: the child can't reliably learn who
+embedded it (Firefox has no `location.ancestorOrigins`).
+
+```ts
+connectToParent({
+  allowedOrigins: ['https://app.example.com', /^https:\/\/[a-z0-9-]+\.preview\.example\.com$/],
+});
+```
+
+- Prefer exact origin strings. A `RegExp` must be anchored with `^…$`; a dev warning says
+  when it isn't. The `g` and `y` flags are rejected, because they make `test()` stateful.
+- `'*'` is rejected unless you also set `unsafeAllowAnyOrigin: true`. On the child, that
+  lets *any* page embed yours and call your methods.
+
+Treat everything that crosses the boundary as untrusted input: validate method arguments
+the way you would validate an HTTP request body.
+
+## Choosing `sandbox` flags
+
+| What's in the iframe | Where it's served from | Recommended |
+|---|---|---|
+| Your own UI, rendered with `<Frame>` | same origin (`srcdoc`) | Leave `sandbox` off; it can't protect you here (see below). Use CSP instead. |
+| Your own app or widget | a different origin you control | `sandbox="allow-scripts allow-same-origin"`, plus only the flags it needs (`allow-forms`, `allow-popups`, …) |
+| Untrusted or user-generated content | a separate origin used only for that content | `sandbox="allow-scripts"`, and `origin: 'null'` on the parent |
+
+<Aside type="caution" title="allow-scripts + allow-same-origin on same-origin content">
+  For a document served from **your own origin**, `allow-scripts allow-same-origin` is the
+  same as no sandbox at all: the framed script can reach into the parent and remove the
+  `sandbox` attribute. Those two flags together are only meaningful for content on a
+  different origin, where "same origin" means *its* origin, not yours.
+</Aside>
+
+### Opaque origins
+
+Without `allow-same-origin`, the child runs in an opaque origin and every message it sends
+comes from `'null'`. react-iframe-kit never assumes that: the parent must opt in with
+`origin: 'null'`, and a child whose parent is opaque must list `'null'` in
+`allowedOrigins`.
+
+With an opaque origin, only the iframe's window object identifies the child. If its
+document were replaced in the middle of the handshake, the new document could receive
+the connection. So **don't expose privileged methods to an opaque-origin child**: give it
+only what any page on the internet could safely call.
+
+Portal rendering (`<Frame>`, `useIframe`) needs `allow-same-origin` and reports
+`RIK_INVALID_OPTIONS` without it.
+
+## Content Security Policy
+
+**On the host page:** limit which origins may be framed.
+
+```http
+Content-Security-Policy: frame-src https://widget.example.com
+```
+
+**On the embedded page:** limit who may frame it. This is the header-level counterpart of
+`allowedOrigins`, and it also stops clickjacking.
+
+```http
+Content-Security-Policy: frame-ancestors https://app.example.com
+```
+
+`X-Frame-Options` is the legacy version of `frame-ancestors`; when both are set, browsers
+use `frame-ancestors`.
+
+### `<Frame>` under a strict CSP
+
+A `<Frame>` document is a `srcdoc` document, and it inherits the host page's CSP.
+
+- With `style-src 'nonce-…'`, give every `<style>` you render through `head` the nonce:
+  `<style nonce={nonce}>`.
+- `copyStyles` clones the parent's style elements with their nonce, so mirrored styles
+  keep working under a nonce-based policy.
+
+## Other defaults
+
+- Messages are validated field by field, and malformed ones are dropped.
+- Only a method that is an *own* property holding a function can be called, so
+  `constructor`, `toString` and `__proto__` answer `RIK_METHOD_NOT_FOUND`.
+- Error stacks cross the boundary only with `debug: true`, since they leak file paths.
+  Don't enable `debug` in production.
+- A cross-origin child controls its own reported size: set `maxHeight` for untrusted
+  content.

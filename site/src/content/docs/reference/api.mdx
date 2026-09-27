@@ -1,0 +1,77 @@
+---
+title: API
+description: Every export of react-iframe-kit, react-iframe-kit/child and react-iframe-kit/child/react.
+---
+
+## `react-iframe-kit`
+
+For the page that owns the `<iframe>`.
+
+| Export | Signature | Guide |
+|---|---|---|
+| `Frame` | `<Frame head? copyStyles? resize? srcDoc? {...iframeProps}>` | [Portal](/react-iframe-kit/guides/portal/) |
+| `useFrame` | `() => { window, document }` | [Portal](/react-iframe-kit/guides/portal/) |
+| `useIframe` | `({ srcDoc? }) => { frameProps, iframe, window, document, mountNode, error }` | [Portal](/react-iframe-kit/guides/portal/) |
+| `useIframeResize` | `(target, options?) => { width, height } \| null` | [Resize](/react-iframe-kit/guides/resize/) |
+| `useIframeRPC` | `<Remote, Local>(target, options?) => { remote, emit, status, error }` | [RPC](/react-iframe-kit/guides/rpc/) |
+| `useIframeEvent` | `<Remote, Name>(target, name, handler, options?) => void` | [RPC](/react-iframe-kit/guides/rpc/) |
+| `withOptions` | `(remote.method, { signal?, timeout? }) => sameSignature` | [RPC](/react-iframe-kit/guides/rpc/) |
+| `transfer` | `(value, transferables) => value` | [RPC](/react-iframe-kit/guides/rpc/) |
+| `IframeKitError`, `RemoteError`, `TimeoutError`, `isIframeKitError` | | [Errors](/react-iframe-kit/reference/errors/) |
+
+`target` is an `HTMLIFrameElement`, `null`, or a ref to one. A ref is read after every
+commit of the component that calls the hook. If the `<iframe>` is rendered by another
+component that re-renders on its own, pass the element instead, e.g. from state set by a
+callback ref.
+
+### `useIframeRPC` options
+
+| Option | Default | |
+|---|---|---|
+| `origin` | the origin of the iframe's `src` | Expected origin of the iframe. |
+| `unsafeAllowAnyOrigin` | `false` | Required to pass `origin: '*'`. |
+| `methods` | | Methods the iframe may call. The latest ones are always used. |
+| `timeout` | `10_000` | Per call, from send to result; `Infinity` allowed. |
+| `connectTimeout` | `30_000` | How long a call may wait for the connection; `Infinity` allowed. |
+| `debug` | `false` | Log all protocol traffic. |
+
+## `react-iframe-kit/child`
+
+For the page inside the iframe. No React needed; also available as a `<script>`
+(`dist/child.global.js`, global `ReactIframeKit`).
+
+| Export | Signature |
+|---|---|
+| `connectToParent` | `<Remote, Local>(options) => ParentHandle` |
+| `withOptions`, `transfer` | as above |
+| `IframeKitError`, `RemoteError`, `TimeoutError`, `isIframeKitError` | |
+
+`connectToParent` options: `allowedOrigins` (required), `unsafeAllowAnyOrigin`, `methods`,
+`timeout`, `connectTimeout`, `autoResize` (`true` or `{ measure }`), `debug`.
+
+`ParentHandle`: `status` (`'idle' | 'connecting' | 'connected'`), `remote`,
+`emit(name, payload?)`, `on(name, handler) => off`, `whenConnected()`, `dispose()`.
+
+On the server, and when the page isn't inside an iframe, `connectToParent` does nothing
+and stays `'idle'`.
+
+## `react-iframe-kit/child/react`
+
+| Export | Signature |
+|---|---|
+| `useParent` | `<Remote, Local>(options) => { remote, emit, status, error }` |
+| `useParentEvent` | `<Remote, Name>(name, handler) => void` |
+
+`useParent` takes the same options as `connectToParent`, read once on mount, except
+`methods`, which always uses the latest. It returns `status: 'idle'` during server
+rendering and hydration.
+
+## Contract types
+
+| Type | |
+|---|---|
+| `Side<{ methods?, events? }>` | One side's contract. Rejects non-cloneable types and reserved names. |
+| `Remote<S>` | The shape of `remote` for side `S`: every method returns a promise. |
+| `LocalMethods<S>` | Any subset of `S`'s methods, sync or async. |
+| `Emit<S>`, `On<S>` | `emit` and `on` for `S`'s events. |
+| `AnySide` | The default when no contract is given. |

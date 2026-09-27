@@ -1,0 +1,55 @@
+---
+title: Errors
+description: Error codes, and how hooks, imperative APIs and calls report them.
+---
+
+Every error is an `IframeKitError` with a stable `code`:
+
+```ts
+import { IframeKitError, RemoteError, isIframeKitError } from 'react-iframe-kit';
+
+try {
+  await remote.save(draft);
+} catch (error) {
+  if (error instanceof RemoteError) console.log(error.cause.code); // the remote's own code
+  else if (error instanceof IframeKitError && error.code === 'RIK_TIMEOUT') retry();
+}
+```
+
+`instanceof` works across duplicate copies of the library on one page (for example an
+ESM and a CJS copy). Use `isIframeKitError(value)` if you'd rather avoid `instanceof`.
+
+| Code | When |
+|---|---|
+| `RIK_TIMEOUT` | No result within `timeout` (`phase: 'response'`), or still waiting for the connection after `connectTimeout` (`phase: 'connect'`). |
+| `RIK_CONNECTION_LOST` | The other side sent `bye`, reloaded, or its session was replaced while the call was pending. |
+| `RIK_DESTROYED` | This side went away: the hook unmounted, or `dispose()` was called. |
+| `RIK_METHOD_NOT_FOUND` | The other side has no method with that name. |
+| `RIK_REMOTE_ERROR` | The remote method threw. The error is a `RemoteError`; see below. |
+| `RIK_DATA_CLONE` | An argument, return value or payload couldn't be structured-cloned. |
+| `RIK_QUEUE_OVERFLOW` | More than 1,000 calls and events queued while not connected. |
+| `RIK_ORIGIN_CONFLICT` | Two users of the same iframe (or two `connectToParent` callers) passed different origins. |
+| `RIK_METHOD_CONFLICT` | Two users registered the same method name on one connection. |
+| `RIK_INVALID_OPTIONS` | E.g. `'*'` without `unsafeAllowAnyOrigin`, an empty `allowedOrigins`, `<Frame>` in a sandbox without `allow-same-origin`. |
+
+## `RemoteError`
+
+A method that throws on the other side rejects your call with a `RemoteError`: its
+`message` is the remote message, and `cause` holds what crossed the wire, namely `name`,
+`message`, `code` (if the thrown value had a string or number `code`) and `data` (if it
+had an own `data` property). The remote `stack` is included only when the other side
+runs with `debug: true`.
+
+## Who throws, who reports
+
+- **Hooks and `<Frame>` never throw** for configuration or connection problems. A throw
+  during render would take down your app over an embed. Instead they report `status:
+  'error'` with `error` set (`useIframe` has `error`), render nothing into the iframe
+  (`<Frame>`), and log `console.error`, in every build.
+- **Imperative APIs** (`connectToParent`, `withOptions`) throw synchronously on invalid
+  options.
+- **Calls** always reject; they never throw synchronously.
+- An aborted call rejects with `signal.reason` (a standard `AbortError`), not with an
+  `IframeKitError`.
+- A message from an unexpected origin isn't an error: it's ignored, and shows up with
+  `debug: true`.

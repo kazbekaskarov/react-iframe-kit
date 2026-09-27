@@ -1,0 +1,28 @@
+---
+title: Playground
+description: Edit markup and styles live and watch <Frame> render and resize them.
+tableOfContents: false
+---
+
+import Playground from '../../components/Playground';
+
+Type into the boxes. `<Frame resize>` renders the markup into a real iframe with its own
+document, applies your CSS inside it, and follows the content's height. Open the
+`<details>` element to watch it grow, or set a `maxHeight` to see clamping.
+
+<Playground client:only="react" />
+
+The code behind it is short:
+
+```tsx
+<Frame
+  title="Playground output"
+  head={<style>{css}</style>}
+  resize={{ maxHeight, onResize: setSize }}
+>
+  <div dangerouslySetInnerHTML={{ __html: html }} />
+</Frame>
+```
+
+For calls and events between two pages, see the live demo in
+[RPC and events](/react-iframe-kit/guides/rpc/).

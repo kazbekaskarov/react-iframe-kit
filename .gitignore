@@ -11,3 +11,5 @@ e2e/.published/
 
 # Local Claude Code settings (per-machine permissions)
 .claude/settings.local.json
+site/dist/
+site/.astro/

@@ -1,0 +1,50 @@
+---
+title: Comparison
+description: How react-iframe-kit relates to react-frame-component, iframe-resizer, Penpal and Comlink.
+tableOfContents: false
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+react-iframe-kit covers three jobs that usually take three packages. If you only need one
+of them and already use a good library for it, you may not need this one.
+
+| | react-iframe-kit | react-frame-component | iframe-resizer | Penpal | Comlink |
+|---|:-:|:-:|:-:|:-:|:-:|
+| Render React into an iframe | ✅ | ✅ | — | — | — |
+| Mounts only into the final document | ✅ | ⚠️ ¹ | — | — | — |
+| Resize, same-origin | ✅ | — | ✅ | — | — |
+| Resize, cross-origin | ✅ | — | ✅ | — | — |
+| Method calls | ✅ | — | ⚠️ ² | ✅ | ✅ |
+| Events | ✅ | — | ⚠️ ² | — | — |
+| Typed calls | ✅ | — | — | ✅ | ✅ |
+| React hooks | ✅ | component | ✅ ³ | — | — |
+| Origin checks enforced | ✅ | n/a | configurable | configurable | optional ⁴ |
+| One connection for everything | ✅ | n/a | n/a | n/a | n/a |
+| Built for | iframes | iframes | iframes | iframes, workers, windows | workers ⁵ |
+
+Notes:
+
+1. It portals into the iframe's document. Whether you hit the
+   [#22847](https://github.com/facebook/react/issues/22847) race depends on the browser
+   and on whether you pass `initialContent` (a `srcdoc`); see
+   [Portal rendering](/react-iframe-kit/guides/portal/#why-not-just-portal-into-contentdocument).
+2. Untyped messages between the two sides, not request/response calls.
+3. Through a separate React package.
+4. Its window endpoint can be limited to an origin, but nothing makes you.
+5. Iframes through a window adapter.
+
+<Aside type="note">
+  This table reflects each project's documented features as of September 2026, written by
+  the author of react-iframe-kit. Check the other projects' docs, and their licenses,
+  before deciding. Corrections are welcome as
+  [issues](https://github.com/kazbekaskarov/react-iframe-kit/issues).
+</Aside>
+
+## When to pick something else
+
+- **Only RPC to a web worker:** Comlink. react-iframe-kit is iframe-only by design.
+- **Deeply nested objects or callbacks across the boundary:** Comlink's proxies do that.
+  Here, `remote` is a flat method map and only cloneable data crosses.
+- **You already run iframe-resizer and only need resizing:** it's mature and widely used.
+  The two use different wire protocols and can't talk to each other.

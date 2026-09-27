@@ -1,0 +1,37 @@
+---
+title: react-iframe-kit
+description: Hooks-first React toolkit for iframes. Portal rendering, auto-resize and a typed RPC bridge in one package.
+template: splash
+hero:
+  tagline: Render into iframes, size them to their content, and talk to them with typed calls and events. One package, one connection per iframe.
+  actions:
+    - text: Get started
+      link: /react-iframe-kit/getting-started/
+      icon: right-arrow
+    - text: Try the playground
+      link: /react-iframe-kit/playground/
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+<CardGrid>
+  <Card title="Portal rendering" icon="document">
+    `<Frame>` and `useIframe` render React children into an iframe, and mount only into the
+    iframe's *final* document. That sidesteps the race behind
+    [facebook/react#22847](https://github.com/facebook/react/issues/22847), where portaled
+    content silently disappears.
+  </Card>
+  <Card title="Auto-resize" icon="seti:image">
+    `useIframeResize` follows the content's size, same-origin or cross-origin, with a guard
+    against content that grows with the iframe forever.
+  </Card>
+  <Card title="Typed RPC and events" icon="rocket">
+    Describe each side once with `Side<>`, then call methods and emit events in both
+    directions. Calls made before the handshake is complete are queued.
+  </Card>
+  <Card title="Safe by default" icon="approve-check">
+    Origins are checked on both sides, and the child must list the parents it accepts.
+    `'*'` needs an explicit `unsafeAllowAnyOrigin`.
+  </Card>
+</CardGrid>

@@ -1,0 +1,100 @@
+---
+title: Portal rendering
+description: Render React children into a same-origin iframe with <Frame> or useIframe.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Rendering into an iframe isolates the content's CSS and layout from the host page: emails,
+invoices, print previews, embedded editors, design-system sandboxes.
+
+## `<Frame>`
+
+```tsx
+import { Frame } from 'react-iframe-kit';
+
+<Frame title="Email preview" head={<style>{emailCss}</style>} resize>
+  <Email message={message} />
+</Frame>;
+```
+
+| Prop | |
+|---|---|
+| `children` | Rendered into the iframe's `<body>`. |
+| `head` | Rendered into the iframe's `<head>`, e.g. `<style>` or `<link>`. |
+| `copyStyles` | Mirror the parent's `<style>` and `<link rel="stylesheet">` into the iframe, including ones added later. |
+| `resize` | `true` to follow the content's height, or [`useIframeResize` options](/react-iframe-kit/guides/resize/). |
+| `srcDoc` | A custom document. Keep the string stable: changing it reloads the iframe. |
+| anything else | Forwarded to the `<iframe>`. `ref` points at the iframe element. |
+
+Inside a `<Frame>`, `useFrame()` returns the iframe's `window` and `document`. CSS-in-JS
+and positioning libraries need those:
+
+```tsx
+import createCache from '@emotion/cache';
+import { CacheProvider } from '@emotion/react';
+import { useFrame } from 'react-iframe-kit';
+
+function FrameEmotion({ children }: { children: React.ReactNode }) {
+  const { document } = useFrame();
+  const cache = useMemo(
+    () => document && createCache({ key: 'frame', container: document.head }),
+    [document],
+  );
+  return cache ? <CacheProvider value={cache}>{children}</CacheProvider> : null;
+}
+```
+
+Outside a `<Frame>`, `useFrame()` returns the global `window` and `document`, so the same
+component works in both places. On the server both are `null`.
+
+## `useIframe`: the headless version
+
+```tsx
+import { createPortal } from 'react-dom';
+import { useIframe } from 'react-iframe-kit';
+
+function Preview({ children }: { children: React.ReactNode }) {
+  const { frameProps, mountNode, error } = useIframe();
+  if (error) return <p>Can't render the preview.</p>;
+  return (
+    <>
+      <iframe {...frameProps} title="Preview" />
+      {mountNode && createPortal(children, mountNode)}
+    </>
+  );
+}
+```
+
+`mountNode`, `window` and `document` are `null` until the iframe's final document has
+loaded, and they're updated after every reload.
+
+## Why not just portal into `contentDocument`?
+
+When an `<iframe>` is inserted, the browser creates an initial `about:blank` document
+right away. If you portal into it and that document is then replaced, the content
+disappears silently: React keeps rendering into a detached document
+([facebook/react#22847](https://github.com/facebook/react/issues/22847)). This happens in
+Firefox up to 146 (so Firefox ESR 140 too) without any `src`, and in **every** browser as
+soon as the iframe has a `srcdoc`.
+
+react-iframe-kit gives the iframe a `srcdoc` of its own, which also keeps the document in
+standards mode (`about:blank` is quirks mode). It mounts only after that document's native
+`load`, and remounts after every reload.
+
+## Styles
+
+`copyStyles` clones the parent's stylesheets at mount and mirrors later changes (dev HMR,
+runtime CSS-in-JS). Its limits:
+
+- only direct children of the parent `<head>` are copied;
+- rules added through the CSSOM (`sheet.insertRule`, e.g. emotion's production "speedy"
+  mode) can't be observed, so they aren't mirrored: point the library at
+  `useFrame().document.head` instead, as above;
+- `adoptedStyleSheets` are copied once, when mirroring starts.
+
+<Aside type="caution" title="Sandboxing">
+  Portal rendering needs same-origin access. With a `sandbox` that lacks
+  `allow-same-origin`, `useIframe` reports `RIK_INVALID_OPTIONS` in `error` and `<Frame>`
+  renders nothing (and logs it). See [Security](/react-iframe-kit/guides/security/).
+</Aside>
