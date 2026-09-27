@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>react-iframe-kit e2e: copyStyles under a nonce-based CSP</title>
+    <!-- Served with `Content-Security-Policy: style-src 'nonce-rik-e2e'` (e2e/vite.config.ts). -->
+    <style nonce="rik-e2e">
+      .probe { color: rgb(0, 128, 0); }
+    </style>
+    <!-- No nonce: the policy must block this, here and in the iframe. -->
+    <style>
+      .canary { color: rgb(255, 0, 0); }
+    </style>
+  </head>
+  <body>
+    <p class="probe" data-testid="parent-probe">parent probe</p>
+    <p class="canary" data-testid="parent-canary">parent canary</p>
+    <div id="root"></div>
+    <script type="module" src="./csp-frame.tsx"></script>
+  </body>
+</html>

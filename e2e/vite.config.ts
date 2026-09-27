@@ -10,7 +10,22 @@ const published = (path: string) =>
 // Serves e2e/fixtures against the library sources, so e2e runs don't need a build.
 export default defineConfig({
   root: fileURLToPath(new URL('./fixtures', import.meta.url)),
-  plugins: [react()],
+  plugins: [
+    react(),
+    {
+      // A strict host CSP for the copyStyles-under-CSP fixture (e2e/csp.spec.ts).
+      // style-src only: Vite's dev client needs inline scripts.
+      name: 'csp-fixture-header',
+      configureServer(server) {
+        server.middlewares.use((req, res, next) => {
+          if (req.url?.startsWith('/csp-frame.html')) {
+            res.setHeader('Content-Security-Policy', "style-src 'nonce-rik-e2e'");
+          }
+          next();
+        });
+      },
+    },
+  ],
   define: { __DEV__: 'true' },
   resolve: {
     alias: [
