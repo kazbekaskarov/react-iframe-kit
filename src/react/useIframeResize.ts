@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { applySize, clamp, type SizeLimits } from '../core/applySize';
-import { createLoopGuard } from '../core/loopGuard';
+import { createLoopGuard, type LoopGuard } from '../core/loopGuard';
 import type { MeasureFn, Measurement, Size } from '../core/measure';
 import { observeSize } from '../core/observeSize';
+import { acquireParentConnection } from '../core/parentConnection';
 import { type IframeTarget, useIframeTarget } from './useIframeTarget';
 import { useIsomorphicLayoutEffect } from './useIsomorphicLayoutEffect';
 
@@ -16,18 +17,35 @@ export interface UseIframeResizeOptions extends SizeLimits {
   /** Called with every new content size. */
   onResize?: ((size: Size) => void) | undefined;
   /**
-   * Called when the feedback-loop guard holds growth: the content sizes itself from
-   * the viewport (e.g. `height: 100vh` plus a margin) and would grow forever.
+   * Called when the feedback-loop guard starts holding growth: the content sizes
+   * itself from the viewport (e.g. `height: 100vh` plus a margin) and would grow
+   * forever otherwise.
    */
-  onResizeLoop?: ((axis: 'width' | 'height') => void) | undefined;
-  /** Replaces the built-in measurement for unusual layouts. */
+  onResizeLoop?: (() => void) | undefined;
+  /** Replaces the built-in measurement for unusual layouts. Same-origin mode only. */
   measure?: MeasureFn | undefined;
+  /**
+   * Expected origin of a cross-origin iframe, or to share a connection with
+   * `useIframeRPC` on the same iframe. Optional even cross-origin: derived from the
+   * iframe's `src` otherwise. See docs/design.md → Security.
+   */
+  origin?: string | undefined;
+  unsafeAllowAnyOrigin?: boolean | undefined;
 }
 
+const axesOf = (axis: ResizeAxis) => ({
+  width: axis === 'width' || axis === 'both',
+  height: axis === 'height' || axis === 'both',
+});
+
 /**
- * Sizes an iframe to its content. v1 of this hook handles same-origin iframes, whose
- * document the parent can measure directly; cross-origin iframes are sized by the
- * child's `autoResize` (roadmap step 5). See docs/design.md → Resize.
+ * Sizes an iframe to its content, same-origin or cross-origin. See docs/design.md →
+ * Resize.
+ *
+ * Same-origin: measures the iframe's document directly. Cross-origin: relies on the
+ * child running `connectToParent({ autoResize: true })`. If a same-origin child also
+ * opts into `autoResize`, its reports take over from direct measurement (it knows its
+ * own layout).
  *
  * @returns the latest content size, or `null` before the first measurement.
  */
@@ -47,57 +65,74 @@ export function useIframeResize(
   // Dev warnings already shown by this hook instance.
   const warned = useRef(new Set<string>());
 
-  const [doc, setDoc] = useState<Document | null>(null);
-
-  // Mode detection happens after each native `load`, never earlier: before the first
-  // load every iframe holds an initial about:blank that is readable even when `src` is
-  // cross-origin. See docs/design.md → Two modes.
+  // Hooks acquire the connection in a layout effect, not a passive one: port messages
+  // are macrotasks and can arrive between a commit and its passive effects.
+  // See docs/design.md → Connection sharing.
   useIsomorphicLayoutEffect(() => {
-    if (!iframe) {
-      setDoc(null);
+    if (!iframe) return;
+
+    let connection: ReturnType<typeof acquireParentConnection>;
+    try {
+      connection = acquireParentConnection(iframe, {
+        origin: optionsRef.current.origin,
+        unsafeAllowAnyOrigin: optionsRef.current.unsafeAllowAnyOrigin,
+      });
+    } catch (error) {
+      console.error(error);
       return;
     }
-    // The same-origin document to measure, or null (cross-origin, or the transient
-    // initial about:blank of an iframe that is navigating to its `src`/`srcdoc`).
-    const readDocument = (): Document | null => {
-      let doc: Document | null;
-      try {
-        doc = iframe.contentDocument;
-      } catch {
-        return null;
-      }
-      if (doc?.readyState !== 'complete') return null;
-      const src = iframe.getAttribute('src');
-      const navigating =
-        iframe.hasAttribute('srcdoc') || (src !== null && src !== '' && src !== 'about:blank');
-      return navigating && doc.URL === 'about:blank' ? null : doc;
-    };
-    const onLoad = () => setDoc(readDocument());
 
-    // The document may have loaded before we got here (e.g. before hydration).
-    onLoad();
-
-    iframe.addEventListener('load', onLoad);
-    return () => iframe.removeEventListener('load', onLoad);
-  }, [iframe]);
-
-  useEffect(() => {
-    if (!iframe || !doc) return;
-    const guards = { width: createLoopGuard(), height: createLoopGuard() };
     const warnOnce = (key: string, message: string) => {
       if (warned.current.has(key)) return;
       warned.current.add(key);
       console.warn(`react-iframe-kit: ${message}`);
     };
 
-    const onMeasurement = (measurement: Measurement) => {
-      const { axis = 'height', apply = true, onResize, onResizeLoop, measure } = optionsRef.current;
-      const axes = {
-        width: axis === 'width' || axis === 'both',
-        height: axis === 'height' || axis === 'both',
-      };
+    let localGuards: { width: LoopGuard; height: LoopGuard } = {
+      width: createLoopGuard(),
+      height: createLoopGuard(),
+    };
+    let lastLocalSize: Size | undefined;
+    let stopLocalObserver: (() => void) | undefined;
+    let currentDoc: Document | null = null;
+    /** The document for which a same-origin child's own report is taking over. */
+    let childReportingForDoc: Document | null = null;
 
-      if (__DEV__ && !measure) {
+    let everReceivedRemoteSize = false;
+    let remoteLoop = false;
+    let noSizeTimer: ReturnType<typeof setTimeout> | undefined;
+
+    const commit = (width: number, height: number, loopStarted: boolean) => {
+      const {
+        apply = true,
+        onResize,
+        onResizeLoop,
+        minWidth,
+        maxWidth,
+        minHeight,
+        maxHeight,
+        axis = 'height',
+      } = optionsRef.current;
+      setSize((prev) =>
+        prev && prev.width === width && prev.height === height ? prev : { width, height },
+      );
+      onResize?.({ width, height });
+      if (loopStarted) onResizeLoop?.();
+      if (!apply) return;
+      const axes = axesOf(axis);
+      applySize(
+        iframe,
+        axes.width ? clamp(width, minWidth, maxWidth) : undefined,
+        axes.height ? clamp(height, minHeight, maxHeight) : undefined,
+      );
+    };
+
+    const onLocalMeasurement = (measurement: Measurement) => {
+      if (currentDoc && childReportingForDoc === currentDoc) return;
+      const axis = optionsRef.current.axis ?? 'height';
+      const axes = axesOf(axis);
+
+      if (!optionsRef.current.measure) {
         if (measurement.overflow) {
           warnOnce(
             'overflow',
@@ -112,42 +147,106 @@ export function useIframeResize(
         }
       }
 
-      const next = { width: measurement.width, height: measurement.height };
-      setSize((prev) =>
-        prev && prev.width === next.width && prev.height === next.height ? prev : next,
-      );
-      onResize?.(next);
-
-      const hold = (dimension: 'width' | 'height') => {
-        const wasTripped = guards[dimension].tripped;
-        const held = guards[dimension].check(
-          measurement[dimension],
-          measurement.viewport[dimension],
+      const wasTripped = localGuards.width.tripped || localGuards.height.tripped;
+      let width = measurement.width;
+      if (axes.width && localGuards.width.check(measurement.width, measurement.viewport.width)) {
+        width = lastLocalSize?.width ?? measurement.width;
+      }
+      let height = measurement.height;
+      if (
+        axes.height &&
+        localGuards.height.check(measurement.height, measurement.viewport.height)
+      ) {
+        height = lastLocalSize?.height ?? measurement.height;
+      }
+      const tripped = localGuards.width.tripped || localGuards.height.tripped;
+      if (tripped && !wasTripped) {
+        warnOnce(
+          'loop',
+          'the iframe content keeps growing with the iframe (content sized from the viewport, e.g. `100vh` or `100%` plus a margin or padding?). Resizing is paused until the content changes.',
         );
-        if (held && !wasTripped) {
-          if (__DEV__) {
-            console.warn(
-              `react-iframe-kit: the iframe content keeps growing with the iframe's ${dimension} (content sized from the viewport, e.g. \`100vh\` or \`100%\` plus a margin or padding?). Resizing is paused until the content changes.`,
-            );
-          }
-          onResizeLoop?.(dimension);
-        }
-        return held;
-      };
+      }
 
-      if (!apply) return;
-      const { minWidth, maxWidth, minHeight, maxHeight } = optionsRef.current;
-      const width =
-        axes.width && !hold('width') ? clamp(measurement.width, minWidth, maxWidth) : undefined;
-      const height =
-        axes.height && !hold('height')
-          ? clamp(measurement.height, minHeight, maxHeight)
-          : undefined;
-      applySize(iframe, width, height);
+      lastLocalSize = { width, height };
+      commit(width, height, tripped && !wasTripped);
     };
 
-    return observeSize(doc, onMeasurement, optionsRef.current.measure);
-  }, [iframe, doc]);
+    const startLocalObserver = () => {
+      stopLocalObserver?.();
+      localGuards = { width: createLoopGuard(), height: createLoopGuard() };
+      lastLocalSize = undefined;
+      stopLocalObserver = currentDoc
+        ? observeSize(currentDoc, onLocalMeasurement, optionsRef.current.measure)
+        : undefined;
+    };
+
+    // Mode detection happens after each native `load`, never earlier: before the
+    // first load every iframe holds an initial about:blank that is readable even
+    // when `src` is cross-origin. See docs/design.md → Two modes.
+    const readDocument = (): Document | null => {
+      let doc: Document | null;
+      try {
+        doc = iframe.contentDocument;
+      } catch {
+        return null;
+      }
+      if (doc?.readyState !== 'complete') return null;
+      const src = iframe.getAttribute('src');
+      const navigating =
+        iframe.hasAttribute('srcdoc') || (src !== null && src !== '' && src !== 'about:blank');
+      return navigating && doc.URL === 'about:blank' ? null : doc;
+    };
+
+    const onLoad = () => {
+      const next = readDocument();
+      if (next === currentDoc) return;
+      currentDoc = next;
+      if (childReportingForDoc !== currentDoc) startLocalObserver();
+      else {
+        stopLocalObserver?.();
+        stopLocalObserver = undefined;
+      }
+    };
+    onLoad();
+    iframe.addEventListener('load', onLoad);
+
+    const onRemoteSize = (remote: { width: number; height: number; loop: boolean }) => {
+      everReceivedRemoteSize = true;
+      if (noSizeTimer !== undefined) {
+        clearTimeout(noSizeTimer);
+        noSizeTimer = undefined;
+      }
+      if (currentDoc && childReportingForDoc !== currentDoc) {
+        // A same-origin child also runs autoResize: its reports win, since it knows
+        // its own layout. See docs/design.md → Resize → Applying.
+        childReportingForDoc = currentDoc;
+        stopLocalObserver?.();
+        stopLocalObserver = undefined;
+      }
+      const loopStarted = remote.loop && !remoteLoop;
+      remoteLoop = remote.loop;
+      commit(remote.width, remote.height, loopStarted);
+    };
+    const unsubscribeSize = connection.onSize(onRemoteSize);
+
+    noSizeTimer = setTimeout(() => {
+      noSizeTimer = undefined;
+      if (!everReceivedRemoteSize && currentDoc === null) {
+        warnOnce(
+          'no-size',
+          "no size has arrived from the iframe. If it's cross-origin, enable `autoResize` in `connectToParent` inside it.",
+        );
+      }
+    }, 5_000);
+
+    return () => {
+      iframe.removeEventListener('load', onLoad);
+      stopLocalObserver?.();
+      unsubscribeSize();
+      if (noSizeTimer !== undefined) clearTimeout(noSizeTimer);
+      connection.release();
+    };
+  }, [iframe]);
 
   return size;
 }

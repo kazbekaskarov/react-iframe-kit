@@ -6,9 +6,9 @@ import { Frame, type UseIframeResizeOptions, useIframeResize } from 'react-ifram
 const root = document.getElementById('root');
 if (!root) throw new Error('#root is missing');
 
-// Reported to the test through data attributes on #root.
-const onResizeLoop: UseIframeResizeOptions['onResizeLoop'] = (axis) => {
-  root.dataset['loop'] = axis;
+// Reported to the test through a data attribute on #root.
+const onResizeLoop: UseIframeResizeOptions['onResizeLoop'] = () => {
+  root.dataset['loop'] = 'true';
 };
 
 function Lines() {

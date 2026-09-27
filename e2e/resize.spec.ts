@@ -81,7 +81,7 @@ test('a long animation does not trip the feedback-loop guard', async ({ page }) 
 
 test('the feedback-loop guard stops content sized from the viewport', async ({ page }) => {
   await page.goto('/resize.html?case=viewport-loop');
-  await expect(page.locator('#root')).toHaveAttribute('data-loop', 'height');
+  await expect(page.locator('#root')).toHaveAttribute('data-loop', 'true');
 
   const held = (await frameSize(page)).viewportHeight;
   await page.waitForTimeout(500);
