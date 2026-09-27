@@ -1,8 +1,17 @@
 [
   {
+    "name": "<Frame> only",
+    "path": "dist/index.js",
+    "import": "{ Frame }",
+    "ignore": ["react", "react-dom"],
+    "limit": "2 kB",
+    "gzip": true
+  },
+  {
     "name": "parent entry (everything)",
     "path": "dist/index.js",
     "import": "*",
+    "ignore": ["react", "react-dom"],
     "limit": "5 kB",
     "gzip": true
   },

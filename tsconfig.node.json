@@ -3,7 +3,13 @@
   "compilerOptions": {
     "types": ["node"],
     "isolatedDeclarations": false,
-    "declaration": false
+    "declaration": false,
+    // e2e fixtures import the package; resolve it to the sources, like e2e/vite.config.ts.
+    "paths": {
+      "react-iframe-kit": ["./src/index.ts"],
+      "react-iframe-kit/child": ["./src/child/index.ts"],
+      "react-iframe-kit/child/react": ["./src/child/react.ts"]
+    }
   },
-  "include": ["*.config.ts", "e2e"]
+  "include": ["*.config.ts", "e2e", "src/env.d.ts"]
 }

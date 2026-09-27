@@ -4,6 +4,16 @@ export default defineConfig({
   define: { __DEV__: 'true' },
   test: {
     environment: 'happy-dom',
+    environmentOptions: {
+      happyDOM: {
+        // Tests create <link> elements; don't let happy-dom try to fetch them.
+        settings: {
+          disableCSSFileLoading: true,
+          disableJavaScriptFileLoading: true,
+          handleDisabledFileLoadingAsSuccess: true,
+        },
+      },
+    },
     include: ['src/**/*.test.{ts,tsx}'],
     coverage: {
       provider: 'v8',
