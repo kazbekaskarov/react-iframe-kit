@@ -144,11 +144,14 @@ fix below covers both.
    puts the document in standards mode. `about:blank` is quirks mode, which silently
    breaks CSS.
 2. The mount node is taken only after the native `load` event for that document. The
-   listener is attached natively in the ref callback, not via React's `onLoad`.
-3. Fallback: if the document is already the final one (`readyState === 'complete'` and
-   the `data-rik-root` marker is present, or `URL === 'about:srcdoc'` for a user
-   srcdoc), mount immediately. `load` may already have fired, for example when
-   the server-rendered iframe loads before hydration.
+   listener is attached natively, not via React's `onLoad`, in a layout effect of the
+   same commit that receives the element: state set from a ref callback is flushed
+   synchronously in that commit, so no `load` task can run in between.
+3. Fallback: if the document is already the final one, mount immediately. "Final"
+   means `readyState === 'complete'`, `URL === 'about:srcdoc'`, and, for the default
+   srcdoc, the `data-rik-root` marker on `<body>` (`isFinalDocument` in
+   `src/core/document.ts`). `load` may already have fired, for example when the
+   server-rendered iframe loads before hydration.
 4. The mount node is recomputed on **every** `load`, so reloads and navigation don't
    leave React rendering into a dead document.
 
@@ -212,6 +215,13 @@ are `null`, and the types say so.
 text changes, which covers dev HMR and runtime CSS-in-JS injection.
 `adoptedStyleSheets` are copied by `cssText`. For CSS-in-JS, pointing the library at
 `useFrame().document.head` is faster and exact, and the docs recommend it.
+
+- Copies go at the start of the iframe `<head>`, in source order, so the iframe's own
+  `head` content wins the cascade.
+- Limits: only direct children of the parent `<head>` are copied. Rules added through
+  CSSOM (`sheet.insertRule`, e.g. emotion's "speedy" production mode) are invisible to
+  a `MutationObserver` and are not mirrored. `adoptedStyleSheets` are copied once, when
+  mirroring starts (Safari < 16.4 has none, which is handled).
 
 Nodes are copied with `importNode`, not rebuilt from text. Cloning keeps the `nonce`
 internal slot, which a strict host CSP needs: the srcdoc document inherits the
@@ -781,14 +791,17 @@ These can't be settled on paper and need to be resolved by a prototype before v1
    1,000-message queue, and the 10 s / 5 s dev warnings.
 4. **Size budgets.** The `child` budget (≤ 2 kB) is at risk given everything the
    entry contains. The budgets are fixed from the first real implementation, not
-   guessed now.
+   guessed now. First data point (roadmap step 3): `<Frame>` alone is 1.89 kB of its
+   2 kB budget (React excluded); the `resize` prop in step 4 will push it over, so
+   that budget needs revisiting then.
 
 ## Roadmap to v1
 
 1. Scaffold, CI, contributor hygiene.
 2. ~~Minimal Firefox #22847 repro on current React + Firefox.~~ Done: see
    [Portal mode](#portal-mode-and-the-firefox-fix-facebookreact22847).
-3. `useIframe` + `<Frame>` (+ `copyStyles`) + Playwright regression + SSR/hydration tests.
+3. ~~`useIframe` + `<Frame>` (+ `copyStyles`) + Playwright regression + SSR/hydration
+   tests.~~ Done, except `<Frame resize>`, which comes with step 4.
 4. Same-origin resize, including the feedback-loop guard.
 5. Core protocol + `child` entry (ESM + IIFE) + cross-origin resize.
 6. RPC + events.
