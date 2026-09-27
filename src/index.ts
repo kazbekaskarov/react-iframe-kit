@@ -2,3 +2,9 @@
 
 export type { ErrorCode, SerializedError, TimeoutPhase } from './core/errors';
 export { IframeKitError, isIframeKitError, RemoteError, TimeoutError } from './core/errors';
+export type { FrameContextValue } from './react/context';
+export { useFrame } from './react/context';
+export type { FrameProps } from './react/Frame';
+export { Frame } from './react/Frame';
+export type { UseIframeOptions, UseIframeResult } from './react/useIframe';
+export { useIframe } from './react/useIframe';
