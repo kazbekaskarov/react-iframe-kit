@@ -1,7 +1,8 @@
 # react-iframe-kit
 
-> **Status: pre-release.** The API is being designed and built in the open; nothing is
-> published to npm yet. See [docs/design.md](docs/design.md) for the full design.
+> **Status: pre-release, not ready for use.** The API is being designed and built in the
+> open; the `0.0.0` version on npm only reserves the name. See
+> [docs/design.md](docs/design.md) for the full design.
 
 One TypeScript-first, hooks-first React library for everything you do with iframes:
 
