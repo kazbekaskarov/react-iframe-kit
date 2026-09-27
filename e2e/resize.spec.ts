@@ -58,6 +58,17 @@ test('clamps to maxHeight', async ({ page }) => {
   expect((await frameSize(page)).contentHeight).toBeGreaterThan(120);
 });
 
+test('a changed maxHeight applies without waiting for the content to change', async ({ page }) => {
+  await page.goto('/resize.html?case=max-height');
+  await expect.poll(async () => (await frameSize(page)).viewportHeight).toBe(120);
+
+  await page.getByRole('button', { name: 'limit 200' }).click();
+  await expect.poll(async () => (await frameSize(page)).viewportHeight).toBe(200);
+
+  await page.getByRole('button', { name: 'no limit' }).click();
+  expect(await expectHeightFits(page)).toBeGreaterThan(200);
+});
+
 test('width follows a shrink-wrapped document with axis "both"', async ({ page }) => {
   await page.goto('/resize.html?case=both-axes');
   await expect.poll(async () => (await frameSize(page)).viewportWidth).toBe(200);

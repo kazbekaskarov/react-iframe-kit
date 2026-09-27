@@ -31,14 +31,24 @@ function Lines() {
   );
 }
 
+// The limit changes while the content stays the same.
 function MaxHeight() {
+  const [maxHeight, setMaxHeight] = useState<number | undefined>(120);
   return (
-    <Frame title="frame" resize={{ maxHeight: 120, minHeight: 40 }}>
-      {Array.from({ length: 30 }, (_, i) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: static list
-        <p key={i}>line {i + 1}</p>
-      ))}
-    </Frame>
+    <>
+      <button type="button" onClick={() => setMaxHeight(200)}>
+        limit 200
+      </button>
+      <button type="button" onClick={() => setMaxHeight(undefined)}>
+        no limit
+      </button>
+      <Frame title="frame" resize={{ maxHeight, minHeight: 40 }}>
+        {Array.from({ length: 30 }, (_, i) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: static list
+          <p key={i}>line {i + 1}</p>
+        ))}
+      </Frame>
+    </>
   );
 }
 
