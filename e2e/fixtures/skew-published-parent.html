@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>react-iframe-kit e2e: version skew, published parent</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module">
+      import * as kit from 'published-kit';
+      import { CHILD_ORIGIN } from '../origins';
+      import { renderHost } from './skew-parent';
+
+      renderHost(kit, `${CHILD_ORIGIN}/skew-current-child.html`);
+    </script>
+  </body>
+</html>

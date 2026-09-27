@@ -78,3 +78,27 @@ jobs:
           name: playwright-report-${{ matrix.browser }}
           path: playwright-report/
           retention-days: 14
+
+  skew:
+    name: Version skew (chromium)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      # The latest published build; the spec skips (with the reason) whatever that
+      # build doesn't export yet.
+      - run: pnpm skew:fetch
+      - run: pnpm test:skew --project=chromium
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: playwright-report-skew
+          path: playwright-report/
+          retention-days: 14

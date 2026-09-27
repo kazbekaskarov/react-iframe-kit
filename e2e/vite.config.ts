@@ -3,6 +3,9 @@ import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 
 const src = (path: string) => fileURLToPath(new URL(`../src/${path}`, import.meta.url));
+// A published build unpacked by `pnpm skew:fetch`, for e2e/skew.spec.ts.
+const published = (path: string) =>
+  fileURLToPath(new URL(`./.published/package/${path}`, import.meta.url));
 
 // Serves e2e/fixtures against the library sources, so e2e runs don't need a build.
 export default defineConfig({
@@ -14,7 +17,11 @@ export default defineConfig({
       { find: /^react-iframe-kit\/child\/react$/, replacement: src('child/react.ts') },
       { find: /^react-iframe-kit\/child$/, replacement: src('child/index.ts') },
       { find: /^react-iframe-kit$/, replacement: src('index.ts') },
+      { find: /^published-kit\/child$/, replacement: published('dist/child/index.js') },
+      { find: /^published-kit$/, replacement: published('dist/index.js') },
     ],
+    // The published build imports `react` from its own location; one copy only.
+    dedupe: ['react', 'react-dom'],
   },
   server: {
     host: '127.0.0.1',

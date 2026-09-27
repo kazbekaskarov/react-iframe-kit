@@ -113,6 +113,8 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
+    "skew:fetch": "node scripts/fetch-published.mjs",
+    "test:skew": "playwright test e2e/skew.spec.ts",
     "check:package": "publint --strict && attw --pack . --profile node16",
     "size": "size-limit",
     "changeset": "changeset",

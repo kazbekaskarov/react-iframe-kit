@@ -852,8 +852,17 @@ Messages from an unexpected origin are not errors: they are dropped (logged with
     `useIframeResize` and `connectToParent` go through;
   - `copyStyles` under a host CSP with `style-src 'nonce-…'` — needs a CSP-serving
     fixture, not yet built.
-- **Version skew:** the parent from `main` against the last published `child` build,
-  and vice versa. Not yet set up; step 7.
+- **Version skew** (`e2e/skew.spec.ts`, CI job "Version skew"): the parent from
+  `main` against the last published `child` build, and vice versa. `pnpm skew:fetch`
+  unpacks the latest published build into `e2e/.published`, after checking the
+  registry's integrity hash (`SKEW_VERSION` picks another version, `SKEW_TARBALL` a
+  local `pnpm pack` output). The same parent and child fixtures then run with the
+  current sources on one side and that build on the other: handshake, resize, calls
+  both ways, and an event. The spec reads what the build exports at runtime and
+  skips whatever it predates, naming the reason. For `0.1.0` that is everything,
+  since it has no protocol; the tests start running with the first release that
+  ships one. Against a `pnpm pack` of the current build, both directions pass on all
+  three browsers.
 - React 18 and 19 matrix in CI.
 
 ## Tooling
