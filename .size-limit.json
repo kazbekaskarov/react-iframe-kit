@@ -1,10 +1,26 @@
 [
   {
-    "name": "<Frame> only",
+    "name": "useIframe only",
+    "path": "dist/index.js",
+    "import": "{ useIframe }",
+    "ignore": ["react", "react-dom"],
+    "limit": "1 kB",
+    "gzip": true
+  },
+  {
+    "name": "useIframeResize only",
+    "path": "dist/index.js",
+    "import": "{ useIframeResize }",
+    "ignore": ["react", "react-dom"],
+    "limit": "1.75 kB",
+    "gzip": true
+  },
+  {
+    "name": "<Frame> (portal, resize, copyStyles)",
     "path": "dist/index.js",
     "import": "{ Frame }",
     "ignore": ["react", "react-dom"],
-    "limit": "2 kB",
+    "limit": "3.5 kB",
     "gzip": true
   },
   {
