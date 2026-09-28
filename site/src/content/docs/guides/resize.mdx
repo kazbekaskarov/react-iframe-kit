@@ -66,6 +66,24 @@ following the viewport for 30 measurements in a row, growth is held at its curre
 `onResizeLoop` fires and a dev warning names the likely cause. Growth resumes by itself
 as soon as the content changes.
 
+## Accessibility
+
+An iframe sized to its content has no scroll area of its own, and that helps more than
+looks:
+
+- **Zoom and small screens.** At 400 % zoom the content reflows with the rest of the page
+  and scrolls with it, instead of sitting in a small box that scrolls separately. That's
+  what WCAG 1.4.10 (Reflow) asks for.
+- **Keyboard.** Nothing needs focus inside the iframe just to scroll it.
+- **Screen readers** read the embedded content in the flow of the page, without a nested
+  region to find.
+
+A `maxHeight` brings the inner scroll area back once the content is taller, so keep it
+generous and use it for untrusted content, where it matters for safety (see below). Give
+the iframe a `title` too: screen readers announce it by that. With a cross-origin page,
+[`useIframeTitle`](/react-iframe-kit/guides/rpc/#the-iframes-title) can take it from the
+page itself.
+
 ## Hidden iframes
 
 An iframe that is `display: none`, or in a background tab, measures as 0 × 0. Those

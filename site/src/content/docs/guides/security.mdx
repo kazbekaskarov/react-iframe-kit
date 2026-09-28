@@ -114,6 +114,33 @@ If the page blocks the document anyway, `useIframe` reports `RIK_INVALID_OPTIONS
 `error` with a message that names the fix, and `<Frame>` renders nothing into the iframe.
 The rest of your app keeps running.
 
+## Checklist for an embeddable page
+
+For a page meant to run inside other sites' iframes, such as a widget or checkout:
+
+- **`frame-ancestors`** lists the sites that may embed it, and matches `allowedOrigins`.
+- **Cookies** it needs while framed are `SameSite=None; Secure`. With third-party cookies
+  blocked, add `Partitioned` (CHIPS) so the browser keeps a separate cookie jar per
+  embedding site; plain third-party cookies may not be sent at all.
+- **Nothing sensitive in `document.title`** if the page uses `syncTitle`: the embedding
+  site receives it.
+
+On the host page:
+
+- **`sandbox`** with only the flags the embed needs (see above).
+- **`allow`** only for the features it needs (`allow="payment"`, `allow="clipboard-write"`,
+  …). Powerful features such as the camera are off in cross-origin iframes unless listed.
+- **`referrerpolicy="strict-origin-when-cross-origin"`** or stricter, so the full URL of
+  your page doesn't leak to the embed.
+- **`maxHeight`** on `useIframeResize` for anything you don't control.
+
+<Aside title="What the embedded page can't protect itself from">
+  The host page owns the `<iframe>` element: its position, size, opacity and what's drawn
+  on top of it. A framed page can't detect or prevent that, so the only defense against
+  being overlaid (clickjacking) is not being framed by untrusted sites at all:
+  `frame-ancestors`.
+</Aside>
+
 ## Other defaults
 
 - Messages are validated field by field, and malformed ones are dropped.
