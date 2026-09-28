@@ -381,6 +381,55 @@ describe('size', () => {
   });
 });
 
+describe('inert', () => {
+  function collectInert(port: MessagePort): boolean[] {
+    const states: boolean[] = [];
+    port.onmessage = (event) => {
+      if (event.data?.type === 'inert') states.push(event.data.inert);
+    };
+    return states;
+  }
+
+  it('tells the child whether any user wants it inert, on changes only', async () => {
+    const { iframe, child } = createIframe();
+    const connection = acquireParentConnection(iframe, {});
+    const port = await connect(connection, child, 'i1', location.origin);
+    const states = collectInert(port);
+    const first = {};
+    const second = {};
+
+    connection.setInert(first, true);
+    connection.setInert(second, true); // still inert: nothing new to say
+    connection.setInert(first, false); // the second user still wants it
+    connection.setInert(second, false);
+    await waitFor(() => states.length === 2);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(states).toEqual([true, false]);
+  });
+
+  it('sends nothing before connecting, then tells the new session', async () => {
+    const { iframe, child } = createIframe();
+    const connection = acquireParentConnection(iframe, {});
+    connection.setInert({}, true); // still connecting: kept for the session
+    synFromChild(child, 'i1', location.origin);
+    const port = lastAckPort(child);
+    if (!port) throw new Error('no ack was sent');
+    const states = collectInert(port);
+    port.postMessage({ rik: 1, type: 'ready' });
+    await waitFor(() => states.length === 1);
+    expect(states).toEqual([true]);
+  });
+
+  it('ignores an inert message from the child', async () => {
+    const { iframe, child } = createIframe();
+    const connection = acquireParentConnection(iframe, {});
+    const port = await connect(connection, child, 'i1', location.origin);
+    port.postMessage({ rik: 1, type: 'inert', inert: true });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(connection.status).toBe('connected');
+  });
+});
+
 describe('title', () => {
   it('notifies listeners of each new title, once per change', async () => {
     const { iframe, child } = createIframe();

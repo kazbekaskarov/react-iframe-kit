@@ -38,6 +38,8 @@ export interface MockChild<
   LocalSide extends SideShape = AnySide,
 > {
   readonly status: MockChildStatus;
+  /** Whether the parent currently asks the page to be inert (`useIframeInert`). */
+  readonly inert: boolean;
   /** The parent's methods; calls made before connecting are queued. */
   remote: Remote<RemoteSide>;
   /** Emits one of the mock page's events to the parent. */
@@ -95,6 +97,7 @@ export function mockChild<
   let port: MessagePort | undefined;
   let size: { width: number; height: number } | undefined;
   let title: string | undefined;
+  let inert = false;
   const connectedWaiters = new Set<{ resolve: () => void; reject: (error: unknown) => void }>();
   const destroyed = () =>
     new IframeKitError('RIK_DESTROYED', 'react-iframe-kit/testing: the mock child was disposed.');
@@ -116,6 +119,7 @@ export function mockChild<
     port?.close();
     port = undefined;
     rpc.disconnected();
+    inert = false; // like the real page: a session's request ends with it
   };
 
   const onPortMessage = (event: MessageEvent) => {
@@ -123,6 +127,7 @@ export function mockChild<
     if (message?.type === 'call') rpc.handleCall(message);
     else if (message?.type === 'result') rpc.handleResult(message);
     else if (message?.type === 'event') rpc.handleEvent(message);
+    else if (message?.type === 'inert') inert = message.inert;
     else if (message?.type === 'bye') {
       closePort();
       status = 'connecting';
@@ -163,6 +168,9 @@ export function mockChild<
   return {
     get status() {
       return status;
+    },
+    get inert() {
+      return inert;
     },
     remote: handle.remote as Remote<RemoteSide>,
     emit: handle.emit as Emit<LocalSide>,

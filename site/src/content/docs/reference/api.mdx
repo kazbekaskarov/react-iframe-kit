@@ -16,6 +16,7 @@ For the page that owns the `<iframe>`.
 | `useIframeRPC` | `<Remote, Local>(target, options?) => { remote, emit, status, error }` | [RPC](/react-iframe-kit/guides/rpc/) |
 | `useIframeEvent` | `<Remote, Name>(target, name, handler, options?) => void` | [RPC](/react-iframe-kit/guides/rpc/) |
 | `useIframeTitle` | `(target, { origin? }?) => string \| undefined` | [RPC](/react-iframe-kit/guides/rpc/#the-iframes-title) |
+| `useIframeInert` | `(target, inert, { origin? }?) => void` | [Accessibility](/react-iframe-kit/guides/accessibility/#disabling-an-iframe) |
 | `withOptions` | `(remote.method, { signal?, timeout? }) => sameSignature` | [RPC](/react-iframe-kit/guides/rpc/) |
 | `transfer` | `(value, transferables) => value` | [RPC](/react-iframe-kit/guides/rpc/) |
 | `IframeKitError`, `RemoteError`, `TimeoutError`, `isIframeKitError` | | [Errors](/react-iframe-kit/reference/errors/) |
@@ -76,7 +77,7 @@ For your tests, in jsdom or happy-dom. No React needed.
 | `mockChild` | `<Remote, Local>(iframe, { methods?, origin?, timeout?, connectTimeout? }?) => MockChild` | [Testing](/react-iframe-kit/guides/testing/#testing-the-parent-mockchild) |
 | `mockParent` | `<Remote, Local>({ methods?, origin?, timeout?, connectTimeout? }?) => MockParent` | [Testing](/react-iframe-kit/guides/testing/#testing-the-child-mockparent) |
 
-`MockChild`: `status`, `remote`, `emit(name, payload?)`, `on(name, handler) => off`,
+`MockChild`: `status`, `inert`, `remote`, `emit(name, payload?)`, `on(name, handler) => off`,
 `resize({ width, height })`, `setTitle(title)`, `whenConnected()`, `dispose()`.
 
 `MockParent`: `status`, `remote`, `emit(name, payload?)`, `on(name, handler) => off`,

@@ -39,6 +39,8 @@ function summarize(message: WindowMessage | PortMessage): string {
       }`;
     case 'event':
       return `event ${message.name}`;
+    case 'inert':
+      return `inert ${message.inert ? 'on' : 'off'}`;
     case 'title':
       return `title ${JSON.stringify(message.title)}`;
     case 'size':

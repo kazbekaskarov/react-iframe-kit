@@ -29,6 +29,8 @@ describe('logProtocolMessage', () => {
     [{ rik: 1, type: 'bye' }, 'bye'],
     [{ rik: 1, type: 'size', width: 320, height: 480 }, 'size 320×480'],
     [{ rik: 1, type: 'title', title: 'Checkout' }, 'title "Checkout"'],
+    [{ rik: 1, type: 'inert', inert: true }, 'inert on'],
+    [{ rik: 1, type: 'inert', inert: false }, 'inert off'],
     [{ rik: 1, type: 'size', width: 320, height: 480, loop: true }, 'size 320×480 loop'],
     [
       { rik: 1, type: 'call', id: 'mfz3k2a0q9x7c1', method: 'getUser', args: [42] },

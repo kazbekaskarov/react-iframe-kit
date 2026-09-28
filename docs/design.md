@@ -47,7 +47,7 @@ One npm package, subpath exports:
 
 | Entry | Runs in | Depends on React | Contents |
 |---|---|---|---|
-| `react-iframe-kit` | parent | yes | `<Frame>`, `useFrame`, `useIframe`, `useIframeResize`, `useIframeRPC`, `useIframeEvent`, `useIframeTitle`, `transfer`, `withOptions`, errors, types |
+| `react-iframe-kit` | parent | yes | `<Frame>`, `useFrame`, `useIframe`, `useIframeResize`, `useIframeRPC`, `useIframeEvent`, `useIframeTitle`, `useIframeInert`, `transfer`, `withOptions`, errors, types |
 | `react-iframe-kit/child` | iframe | no | `connectToParent`, `transfer`, `withOptions`, errors, types |
 | `react-iframe-kit/child/react` | iframe | yes | `useParent`, `useParentEvent` |
 | `react-iframe-kit/testing` | tests (jsdom, happy-dom) | no | `mockChild`, `mockParent`, see [Testing utilities](#testing-utilities) |
@@ -96,13 +96,13 @@ Size budgets (min+gzip, React excluded, enforced by size-limit per import scenar
 | Scenario | Budget | Measured |
 |---|---|---|
 | `useIframe` only | ≤ 1.5 kB | 1.25 kB |
-| `useIframeResize` only (pulls in the handshake/connection, not RPC) | ≤ 5 kB | 4.84 kB |
-| `<Frame>` (portal + resize + copyStyles) | ≤ 6.5 kB | 6.43 kB |
-| `useIframeRPC` + `useIframeEvent` | ≤ 6.5 kB | 6.03 kB |
-| entire parent entry | ≤ 10 kB | 9.8 kB |
-| `child` entry (`connectToParent` with RPC + `autoResize` + `syncTitle`) | ≤ 6.25 kB | 6.12 kB |
-| `child/react` entry (`useParent`, `useParentEvent`) | ≤ 7 kB | 6.98 kB |
-| `child` IIFE | ≤ 6.25 kB | 6.08 kB |
+| `useIframeResize` only (pulls in the handshake/connection, not RPC) | ≤ 5 kB | 4.92 kB |
+| `<Frame>` (portal + resize + copyStyles) | ≤ 6.75 kB | 6.5 kB |
+| `useIframeRPC` + `useIframeEvent` | ≤ 6.5 kB | 6.13 kB |
+| entire parent entry | ≤ 10.5 kB | 10.1 kB |
+| `child` entry (`connectToParent` with RPC + `autoResize` + `syncTitle` + inert) | ≤ 6.25 kB | 6.23 kB |
+| `child/react` entry (`useParent`, `useParentEvent`) | ≤ 7.25 kB | 7.09 kB |
+| `child` IIFE | ≤ 6.25 kB | 6.21 kB |
 
 `<Frame>` is the batteries-included component; size-sensitive users build on
 `useIframe`. Module-level calls such as `forwardRef(...)` must be marked
@@ -124,6 +124,11 @@ so the `child` entry and IIFE grew by about 2.7 kB.
 [Title](#title) sync added about 0.2 kB to the child, which can't be tree-shaken for
 the same reason (`syncTitle` is an option, not an import); the `child` entry and IIFE
 budgets were raised from 6 kB to 6.25 kB.
+[Inert](#inert) added about 0.1 kB to the child (handling the message, always on) and
+to the shared parent connection, which every hook pulls in. `<Frame>` crossed its
+budget by a few bytes and the whole parent entry (which now also has the hook) by
+0.1 kB, so the budgets for `<Frame>`, the parent entry and `child/react` were raised to
+6.75, 10.5 and 7.25 kB. The `child` entry and IIFE are now within 0.05 kB of theirs.
 
 ## Two modes
 
@@ -366,6 +371,7 @@ child                                         parent
 | `event` | `name`, `payload` | fire-and-forget event |
 | `size` | `width`, `height`, `loop?` | child content size; `loop: true` when the child's feedback-loop guard is holding growth |
 | `title` | `title` | child → parent with `syncTitle`: the child's trimmed `document.title` (see [Title](#title)) |
+| `inert` | `inert` | parent → child from `useIframeInert`: whether the child should make itself inert (see [Inert](#inert)) |
 | `bye` | — | the sending side is disposing or unloading |
 
 `cancel` (`id`) is reserved for remote-side cancellation after v1.
@@ -755,6 +761,45 @@ const title = useIframeTitle(iframeRef, { origin }); // string | undefined
   `contentDocument` directly would be possible but hasn't been needed.
 - Protocol: `title` is an additive port message (see
   [Versioning](#versioning)): older parents ignore it, older children never send it.
+
+## Inert
+
+`useIframeInert(iframe, inert)` makes everything inside an iframe unclickable,
+unfocusable and untypeable, e.g. behind a modal or in a read-only preview mode.
+
+`inert` on the `<iframe>` element isn't enough. Measured with Playwright on
+cross-origin and same-origin iframes: clicks and Tab are blocked in every engine, and
+Firefox also takes focus out of the iframe. In Chromium and WebKit, though, keys keep
+reaching an element that was focused inside before, and one the page focuses itself
+afterwards. The page has to be made inert from the inside too:
+
+- **`inert` on its `<body>`** stops it from focusing itself;
+- **`blur()` on its active element** is needed on top in WebKit, where one key still
+  reaches the element that had focus otherwise (`src/core/inert.ts`).
+
+What the hook does while `inert` is true:
+
+- sets the `inert` attribute on the `<iframe>` (and removes it after, unless it was
+  there before: don't also pass `inert` as a prop);
+- **same-origin** (e.g. `<Frame>`): makes the document inside inert directly, and again
+  on every `load`, so no script is needed in the iframe;
+- **cross-origin**: sends `inert` over the connection. Every `connectToParent` page
+  handles it, with no option: the parent can already make the iframe inert from
+  outside, so the page doing the same inside only makes that complete. The page undoes
+  it when the session ends (`bye`, `pagehide`, a replaced session), so it can never
+  stay inert without a parent asking. Several users of one iframe combine: it stays
+  inert while any of them asks, and each new session is told on `ready`.
+- The undo only clears `inert` where the library set it; a page whose own body was
+  already inert keeps it.
+- Not `iframe.blur()` in the parent: in WebKit it leaves the page's `activeElement`
+  reading `body` while keys still reach the element that had focus, and the page's own
+  blur then can't find that element.
+- A child on an older version ignores the message and gets only the attribute: enough
+  in Firefox, not in Chromium and WebKit.
+
+Covered by `e2e/inert.spec.ts` in all three engines, for a cross-origin page and a
+same-origin `<Frame>`: focus inside when it turns on, typing, clicking, Tab, the page
+focusing itself, and everything working again once it's off.
 
 ### Focus traps (documented, not implemented)
 

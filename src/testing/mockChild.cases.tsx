@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Side } from '../core/contract';
 import { useIframeEvent } from '../react/useIframeEvent';
+import { useIframeInert } from '../react/useIframeInert';
 import { useIframeResize } from '../react/useIframeResize';
 import { useIframeRPC } from '../react/useIframeRPC';
 import { useIframeTitle } from '../react/useIframeTitle';
@@ -185,6 +186,50 @@ export function mockChildCases(): void {
 
     it('needs an iframe in the document', () => {
       expect(() => mockChild(document.createElement('iframe'))).toThrow(/in the document/);
+    });
+
+    it('sees useIframeInert, which also owns the iframe’s inert attribute', async () => {
+      function InertHost({ inert }: { inert: boolean }) {
+        const [iframe, setIframe] = useState<HTMLIFrameElement | null>(null);
+        useIframeInert(iframe, inert);
+        return <iframe ref={setIframe} title="Widget" src={SRC} />;
+      }
+      const { rerender } = render(<InertHost inert={false} />);
+      const child = mockChild(iframeElement());
+      await child.whenConnected();
+      expect(child.inert).toBe(false);
+
+      rerender(<InertHost inert />);
+      expect(iframeElement().hasAttribute('inert')).toBe(true);
+      await waitFor(() => expect(child.inert).toBe(true));
+
+      rerender(<InertHost inert={false} />);
+      expect(iframeElement().hasAttribute('inert')).toBe(false);
+      await waitFor(() => expect(child.inert).toBe(false));
+
+      rerender(<InertHost inert />);
+      await waitFor(() => expect(child.inert).toBe(true));
+      child.dispose();
+      expect(child.inert).toBe(false);
+    });
+
+    it('useIframeInert makes a same-origin document inert directly, across reloads', async () => {
+      function SameOriginHost({ inert }: { inert: boolean }) {
+        const [iframe, setIframe] = useState<HTMLIFrameElement | null>(null);
+        useIframeInert(iframe, inert);
+        return <iframe ref={setIframe} title="Same" srcDoc="<p>same</p>" />;
+      }
+      const { rerender } = render(<SameOriginHost inert />);
+      const iframe = iframeElement();
+      const body = () => iframe.contentDocument?.body;
+      await waitFor(() => expect(body()?.hasAttribute('inert')).toBe(true));
+
+      iframe.dispatchEvent(new Event('load')); // a reload: applied to the document again
+      expect(body()?.hasAttribute('inert')).toBe(true);
+
+      rerender(<SameOriginHost inert={false} />);
+      expect(body()?.hasAttribute('inert')).toBe(false);
+      expect(iframe.hasAttribute('inert')).toBe(false);
     });
   });
 }

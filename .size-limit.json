@@ -20,7 +20,7 @@
     "path": "dist/index.js",
     "import": "{ Frame }",
     "ignore": ["react", "react-dom"],
-    "limit": "6.5 kB",
+    "limit": "6.75 kB",
     "gzip": true
   },
   {
@@ -36,7 +36,7 @@
     "path": "dist/index.js",
     "import": "*",
     "ignore": ["react", "react-dom"],
-    "limit": "10 kB",
+    "limit": "10.5 kB",
     "gzip": true
   },
   {
@@ -51,7 +51,7 @@
     "path": "dist/child/react.js",
     "import": "*",
     "ignore": ["react", "react-dom"],
-    "limit": "7 kB",
+    "limit": "7.25 kB",
     "gzip": true
   },
   {

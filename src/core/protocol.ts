@@ -50,6 +50,12 @@ export interface TitleMessage extends Envelope {
   title: string;
 }
 
+/** Parent → child, from `useIframeInert`: whether the child should make itself inert. */
+export interface InertMessage extends Envelope {
+  type: 'inert';
+  inert: boolean;
+}
+
 export interface ByeMessage extends Envelope {
   type: 'bye';
 }
@@ -87,6 +93,7 @@ export type PortMessage =
   | ReadyMessage
   | SizeMessage
   | TitleMessage
+  | InertMessage
   | ByeMessage
   | CallMessage
   | ResultMessage
@@ -160,6 +167,10 @@ export function parsePortMessage(data: unknown): PortMessage | null {
       height: d['height'],
       loop: d['loop'] as boolean | undefined,
     };
+  }
+
+  if (d['type'] === 'inert') {
+    return typeof d['inert'] === 'boolean' ? { rik: RIK, type: 'inert', inert: d['inert'] } : null;
   }
 
   if (d['type'] === 'title') {
