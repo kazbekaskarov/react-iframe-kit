@@ -918,11 +918,12 @@ Messages from an unexpected origin are not errors: they are dropped (logged with
   back/forward navigation in Playwright is comparatively slow and flake-prone for
   what it would additionally prove).
   
-  Still open: two library copies (ESM + CJS) sharing one connection, and `instanceof
-  IframeKitError` across copies. This is deferred, not for a technical reason, but
-  because setting up a second real bundled copy in one e2e fixture is its own chunk
-  of work. The registry sharing itself (`src/core/registry.ts`) is already what both
-  `useIframeResize` and `connectToParent` go through.
+  Two library copies on one page (`e2e/dual.spec.ts`): the built ESM and CJS
+  copies, used crossed over, share one connection per iframe, the child connection,
+  the frame context, the Trusted Types policy and error identity (`instanceof
+  IframeKitError` across copies). It loads `dist/`, so CI builds before the e2e job;
+  locally the spec skips, naming the reason, when the build is missing or older than
+  `src`.
 - **Version skew** (`e2e/skew.spec.ts`, CI job "Version skew"): the parent from
   `main` against the last published `child` build, and vice versa. `pnpm skew:fetch`
   unpacks the latest published build into `e2e/.published`, after checking the
