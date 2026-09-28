@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { logProtocolMessage } from './debugLog';
+import { logProtocolMessage, onProtocolMessage } from './debugLog';
 import type { PortMessage, WindowMessage } from './protocol';
 
 afterEach(() => {
@@ -72,5 +72,37 @@ describe('logProtocolMessage', () => {
       'react-iframe-kit ← result #abc123 ok (getUser, 12 ms)',
       message,
     );
+  });
+});
+
+describe('onProtocolMessage', () => {
+  it('sees every message, with or without debug, until unsubscribed', () => {
+    vi.spyOn(console, 'debug').mockImplementation(() => {});
+    const events: unknown[] = [];
+    const off = onProtocolMessage((event) => events.push(event));
+    const ready = { rik: 1, type: 'ready' } as const;
+
+    logProtocolMessage(false, '→', ready);
+    logProtocolMessage(true, '←', ready, 'detail');
+    expect(events).toEqual([
+      { direction: '→', message: ready, detail: undefined },
+      { direction: '←', message: ready, detail: 'detail' },
+    ]);
+
+    off();
+    logProtocolMessage(false, '→', ready);
+    expect(events).toHaveLength(2);
+  });
+
+  it('keeps other listeners when one unsubscribes', () => {
+    const first: unknown[] = [];
+    const second: unknown[] = [];
+    const offFirst = onProtocolMessage((event) => first.push(event));
+    const offSecond = onProtocolMessage((event) => second.push(event));
+    offFirst();
+    logProtocolMessage(false, '→', { rik: 1, type: 'bye' });
+    expect(first).toEqual([]);
+    expect(second).toHaveLength(1);
+    offSecond();
   });
 });

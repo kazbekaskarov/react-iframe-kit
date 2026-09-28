@@ -52,6 +52,7 @@ One npm package, subpath exports:
 | `react-iframe-kit/child/lite` | iframe | no | `connectToParent` without RPC and events (`autoResize`, `syncTitle`, inert), `IframeKitError`, `isIframeKitError`, types |
 | `react-iframe-kit/child/react` | iframe | yes | `useParent`, `useParentEvent` |
 | `react-iframe-kit/testing` | tests (jsdom, happy-dom) | no | `mockChild`, `mockParent`, see [Testing utilities](#testing-utilities) |
+| `react-iframe-kit/devtools` | either page, in development | no | `onProtocolMessage`, `connectReduxDevTools`, `summarizeProtocolMessage`, see [Devtools](#devtools) |
 
 The `child` entry also ships as an IIFE build (`dist/child.global.js`, global
 `ReactIframeKit`) for embedded pages that don't use a bundler (served via
@@ -106,15 +107,19 @@ Size budgets (min+gzip, React excluded, enforced by size-limit per import scenar
 | Scenario | Budget | Measured |
 |---|---|---|
 | `useIframe` only | ≤ 1.5 kB | 1.25 kB |
-| `useIframeResize` only (pulls in the handshake/connection, not RPC) | ≤ 5 kB | 4.92 kB |
-| `<Frame>` (portal + resize + copyStyles) | ≤ 6.75 kB | 6.5 kB |
-| `useIframeRPC` + `useIframeEvent` | ≤ 6.5 kB | 6.13 kB |
-| entire parent entry | ≤ 10.5 kB | 10.1 kB |
-| `child` entry (`connectToParent` with RPC + `autoResize` + `syncTitle` + inert) | ≤ 6.5 kB | 6.28 kB |
-| `child/lite` entry (the same without RPC and events) | ≤ 4.25 kB | 4.13 kB |
-| `child/react` entry (`useParent`, `useParentEvent`) | ≤ 7.25 kB | 7.16 kB |
-| `child` IIFE | ≤ 6.5 kB | 6.28 kB |
-| `child/lite` IIFE | ≤ 4.25 kB | 4.12 kB |
+| `useIframeResize` only (pulls in the handshake/connection, not RPC) | ≤ 5 kB | 4.96 kB |
+| `<Frame>` (portal + resize + copyStyles) | ≤ 6.75 kB | 6.55 kB |
+| `useIframeRPC` + `useIframeEvent` | ≤ 6.5 kB | 6.15 kB |
+| entire parent entry | ≤ 10.5 kB | 10.12 kB |
+| `child` entry (`connectToParent` with RPC + `autoResize` + `syncTitle` + inert) | ≤ 6.5 kB | 6.32 kB |
+| `child/lite` entry (the same without RPC and events) | ≤ 4.25 kB | 4.18 kB |
+| `child/react` entry (`useParent`, `useParentEvent`) | ≤ 7.25 kB | 7.2 kB |
+| `child` IIFE | ≤ 6.5 kB | 6.32 kB |
+| `child/lite` IIFE | ≤ 4.25 kB | 4.16 kB |
+| `devtools` entry | ≤ 1 kB | 0.72 kB |
+
+The [Devtools](#devtools) listener check in the shared message path costs every entry
+about 0.05 kB; the summaries and the adapter stay in `devtools`.
 
 `<Frame>` is the batteries-included component; size-sensitive users build on
 `useIframe`. Module-level calls such as `forwardRef(...)` must be marked
@@ -1064,6 +1069,35 @@ summaries out of its size budget.
 - **Docs site** (`site/`, workflow "Docs"): a Playwright smoke test of the built site
   loads every page with no console errors, drives the live playground, and runs the
   RPC demo both ways.
+
+## Devtools
+
+`react-iframe-kit/devtools` shows the protocol traffic somewhere better than the
+console.
+
+```ts
+import { connectReduxDevTools } from 'react-iframe-kit/devtools';
+
+if (import.meta.env.DEV) connectReduxDevTools(); // returns the function that stops
+```
+
+- **`onProtocolMessage(listener)`** is the primitive: every message any connection
+  sends or receives on the page, as `{ direction, message, detail? }`, whether or not
+  `debug` is on. Listeners live in the registry, so they see every library copy's
+  traffic, and the event shape is part of the cross-copy contract. `detail` (which
+  call a result answers, and its timing) is filled in only where it's computed:
+  development builds with `debug`.
+- **`connectReduxDevTools({ name?, maxAge? })`** sends each message to the Redux
+  DevTools extension as an action named by its summary (`→ call getUser #q9x7c1`),
+  with the message as payload and `{ sent, received, last }` as state. That gives a
+  searchable, filterable timeline with payload inspection for free, the way
+  Zustand's `devtools` middleware reuses the extension. Without the extension, or on
+  the server, it does nothing.
+- On a page that is both a parent and a child, the listener sees both connections;
+  `direction` is from that page's point of view.
+- The summaries (`summarizeProtocolMessage`, shared with the dev-build `debug` log)
+  live outside the connection code, so only the listener check reaches the main
+  bundles.
 
 ## Testing utilities
 

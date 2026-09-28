@@ -109,6 +109,26 @@
         "default": "./dist/child/react.cjs"
       }
     },
+    "./devtools": {
+      "development": {
+        "import": {
+          "types": "./dist/devtools/index.d.ts",
+          "default": "./dist/dev/devtools/index.js"
+        },
+        "require": {
+          "types": "./dist/devtools/index.d.cts",
+          "default": "./dist/dev/devtools/index.cjs"
+        }
+      },
+      "import": {
+        "types": "./dist/devtools/index.d.ts",
+        "default": "./dist/devtools/index.js"
+      },
+      "require": {
+        "types": "./dist/devtools/index.d.cts",
+        "default": "./dist/devtools/index.cjs"
+      }
+    },
     "./testing": {
       "development": {
         "import": {
@@ -141,6 +161,9 @@
       ],
       "child/react": [
         "./dist/child/react.d.cts"
+      ],
+      "devtools": [
+        "./dist/devtools/index.d.cts"
       ],
       "testing": [
         "./dist/testing/index.d.cts"
