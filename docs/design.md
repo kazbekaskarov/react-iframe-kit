@@ -233,6 +233,14 @@ return (
 - With `resize`, the resized axis is owned by the library. A `height`/`width` in
   `style` is used only as the size before the first measurement, and a dev warning
   says so.
+- Dev warnings for accessibility, after axe-core's `frame-title`,
+  `frame-title-unique` and `frame-focusable-content` rules (`src/core/a11y.ts`):
+  a missing or generic `title` (`iframe`, `frame`, `untitled`, a URL or file name),
+  the same `title` as another mounted `<Frame>` (compared trimmed and
+  case-insensitively), and a negative `tabIndex`, which keeps keyboard users out of
+  the rendered content. They run in an effect, so server rendering and StrictMode's
+  extra render don't trigger them, and each fires once per `<Frame>`. `useIframe`
+  doesn't check: its users render the `<iframe>` themselves.
 
 `FrameContext` → `useFrame(): { window, document }`. This is required by CSS-in-JS
 libraries (emotion `CacheProvider`, styled-components `StyleSheetManager target`)
@@ -850,7 +858,14 @@ An abort rejects with `signal.reason` (a standard `AbortError`), not with an
 Messages from an unexpected origin are not errors: they are dropped (logged with
 `debug`), and the dev warning for a stalled handshake mentions them.
 
-`debug: true` logs all protocol traffic to the console.
+`debug: true` logs all protocol traffic to the console (`src/core/debugLog.ts`), each
+message as a `console.debug` object. In the development build the line starts with a
+summary: the type plus what identifies it (`call getUser #q9x7c1`, `event pinged`,
+`size 320×480`, `result #q9x7c1 error RIK_TIMEOUT: …`, where `#…` is the call id's
+random tail). A result also names the call it answers and its round-trip time, on
+the caller's side, or the method's run time, on the side that ran it:
+`(getUser, 12 ms)`. The production build logs the bare message, which keeps the
+summaries out of its size budget.
 
 ## Testing
 
@@ -865,7 +880,8 @@ Messages from an unexpected origin are not errors: they are dropped (logged with
   really be an error). Enforced at 100% statement/branch/function/line
   on `src/core` (`vitest.config.ts`); a handful of provably-unreachable branches
   (`__DEV__` guards under the test build's `define`, and one exhaustive union match)
-  are marked with `v8 ignore` and explained inline rather than counted.
+  are marked with `v8 ignore` and explained inline rather than counted. `<Frame>`'s
+  dev warnings are tested there too, with Testing Library (`Frame.test.tsx`).
 - **Playwright** (chromium, firefox, webkit): real iframes, including cross-origin via
   two dev-server ports. Covered so far:
   - the #22847 document-replacement regression (`e2e/firefox-22847.spec.ts`);
@@ -909,11 +925,12 @@ Messages from an unexpected origin are not errors: they are dropped (logged with
   back/forward navigation in Playwright is comparatively slow and flake-prone for
   what it would additionally prove).
   
-  Still open: two library copies (ESM + CJS) sharing one connection, and `instanceof
-  IframeKitError` across copies. This is deferred, not for a technical reason, but
-  because setting up a second real bundled copy in one e2e fixture is its own chunk
-  of work. The registry sharing itself (`src/core/registry.ts`) is already what both
-  `useIframeResize` and `connectToParent` go through.
+  Two library copies on one page (`e2e/dual.spec.ts`): the built ESM and CJS
+  copies, used crossed over, share one connection per iframe, the child connection,
+  the frame context, the Trusted Types policy and error identity (`instanceof
+  IframeKitError` across copies). It loads `dist/`, so CI builds before the e2e job;
+  locally the spec skips, naming the reason, when the build is missing or older than
+  `src`.
 - **Version skew** (`e2e/skew.spec.ts`, CI job "Version skew"): the parent from
   `main` against the last published `child` build, and vice versa. `pnpm skew:fetch`
   unpacks the latest published build into `e2e/.published`, after checking the

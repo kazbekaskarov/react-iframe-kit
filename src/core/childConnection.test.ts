@@ -678,7 +678,7 @@ describe('rpc', () => {
     debug.mockClear();
     handle.emit('ping');
     expect(debug).toHaveBeenCalledWith(
-      'react-iframe-kit →',
+      'react-iframe-kit → event ping',
       expect.objectContaining({ type: 'event', name: 'ping' }),
     );
   });

@@ -59,30 +59,68 @@ describe('debug logging', () => {
     expect(debugLog).not.toHaveBeenCalled(); // debug is off by default
 
     engine.setDebug(true);
+    const now = vi.spyOn(performance, 'now').mockReturnValue(100);
     void call(remote, 'y')();
+    const id = lastCall(sent).id;
+    const short = `#${id.slice(-6)}`;
     expect(debugLog).toHaveBeenCalledWith(
-      'react-iframe-kit →',
+      `react-iframe-kit → call y ${short}`,
       expect.objectContaining({ method: 'y' }),
     );
 
     debugLog.mockClear();
-    const id = lastCall(sent).id;
+    now.mockReturnValue(112.4);
     engine.handleResult({ rik: 1, type: 'result', id, ok: true, value: 1 });
-    expect(debugLog).toHaveBeenCalledWith('react-iframe-kit ←', expect.objectContaining({ id }));
+    expect(debugLog).toHaveBeenCalledWith(
+      `react-iframe-kit ← result ${short} ok (y, 12 ms)`,
+      expect.objectContaining({ id }),
+    );
+
+    debugLog.mockClear();
+    engine.handleResult({ rik: 1, type: 'result', id: 'stale-000001', ok: true, value: 1 });
+    expect(debugLog).toHaveBeenCalledWith(
+      'react-iframe-kit ← result #000001 ok',
+      expect.objectContaining({ id: 'stale-000001' }),
+    );
 
     debugLog.mockClear();
     engine.setDebug(false); // merges upward only: does not turn logging back off
     engine.handleEvent({ rik: 1, type: 'event', name: 'z', payload: undefined });
     expect(debugLog).toHaveBeenCalledWith(
-      'react-iframe-kit ←',
+      'react-iframe-kit ← event z',
       expect.objectContaining({ name: 'z' }),
     );
 
     debugLog.mockClear();
-    engine.handleCall({ rik: 1, type: 'call', id: 'c1', method: 'missing', args: [] });
-    expect(debugLog).toHaveBeenCalledWith(
-      'react-iframe-kit ←',
-      expect.objectContaining({ method: 'missing' }),
+    engine.handleCall({ rik: 1, type: 'call', id: 'call-0000c1', method: 'missing', args: [] });
+    expect(debugLog.mock.calls.map(([summary]) => summary)).toEqual([
+      'react-iframe-kit ← call missing #0000c1',
+      'react-iframe-kit → result #0000c1 error RIK_METHOD_NOT_FOUND: no method named "missing" (missing, 0 ms)',
+    ]);
+  });
+
+  it('logs the answer to a call with the method and how long it ran', async () => {
+    const debugLog = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    const now = vi.spyOn(performance, 'now').mockReturnValue(50);
+    const { engine, send } = harness();
+    engine.setDebug(true);
+    engine.connected(send);
+    let finish: (value: string) => void = () => {};
+    const slow = () =>
+      new Promise<string>((resolve) => {
+        finish = resolve;
+      });
+    engine.acquire({}, { methods: { slow } });
+
+    engine.handleCall({ rik: 1, type: 'call', id: 'abc123', method: 'slow', args: [] });
+    now.mockReturnValue(1050);
+    finish('done');
+
+    await vi.waitFor(() =>
+      expect(debugLog).toHaveBeenLastCalledWith(
+        'react-iframe-kit → result #abc123 ok (slow, 1000 ms)',
+        expect.objectContaining({ value: 'done' }),
+      ),
     );
   });
 });

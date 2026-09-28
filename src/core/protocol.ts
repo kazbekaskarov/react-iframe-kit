@@ -21,7 +21,7 @@ export interface SynMessage extends Envelope {
   type: 'syn';
   /** Present only on the child's syn; the parent's prompt syn carries none. */
   instance?: string | undefined;
-  versions: number[];
+  versions: readonly number[];
 }
 
 export interface AckMessage extends Envelope {

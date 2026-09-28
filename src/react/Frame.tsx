@@ -7,10 +7,12 @@ import {
   type ReactNode,
   type RefAttributes,
   useCallback,
+  useEffect,
   useMemo,
   useRef,
 } from 'react';
 import { createPortal } from 'react-dom';
+import { claimFrameTitle, frameA11yProblems } from '../core/a11y';
 import type { TrustedHTMLLike } from '../core/srcdoc';
 import { mirrorStyles } from '../core/styles';
 import { type FrameContextValue, getFrameContext } from './context';
@@ -69,6 +71,29 @@ export const Frame: ForwardRefExoticComponent<FrameProps & RefAttributes<HTMLIFr
         );
       }
     }
+
+    // Checked after commit, so server rendering and StrictMode's extra render don't warn.
+    const warnedA11y = useRef<Set<string> | undefined>(undefined);
+    const { title, tabIndex } = iframeProps;
+    useEffect(() => {
+      if (!__DEV__) return;
+      if (!warnedA11y.current) warnedA11y.current = new Set();
+      const warned = warnedA11y.current;
+      const warnOnce = (problem: string) => {
+        if (warned.has(problem)) return;
+        warned.add(problem);
+        console.warn(`react-iframe-kit: <Frame> ${problem}`);
+      };
+      frameA11yProblems(title, tabIndex).forEach(warnOnce);
+      if (!title?.trim()) return;
+      const claim = claimFrameTitle(title);
+      if (claim.duplicate) {
+        warnOnce(
+          `has the same \`title\` ("${title.trim()}") as another mounted <Frame>. Give each iframe a unique title so screen reader users can tell them apart.`,
+        );
+      }
+      return claim.release;
+    }, [title, tabIndex]);
 
     const { ref: frameRef } = frame.frameProps;
     const ref = useCallback(
