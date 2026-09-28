@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { connectToParent } from '../core/childConnection';
+import { connectToParent } from '../core/connectToParent';
 import { mockParent } from './mockParent';
 
 // Its own file: it needs a page connection that was first made while the page wasn't

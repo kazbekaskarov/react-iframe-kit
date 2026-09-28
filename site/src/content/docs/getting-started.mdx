@@ -19,23 +19,27 @@ import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
   <TabItem label="yarn">`yarn add react-iframe-kit`</TabItem>
 </Tabs>
 
-React 18 or 19 is a peer dependency. The package has three entry points:
+React 18 or 19 is a peer dependency. The package has these entry points:
 
 | Import | Use it in | Needs React | Gives you |
 |---|---|---|---|
-| `react-iframe-kit` | the page that owns the `<iframe>` | yes | `<Frame>`, `useFrame`, `useIframe`, `useIframeResize`, `useIframeRPC`, `useIframeEvent` |
+| `react-iframe-kit` | the page that owns the `<iframe>` | yes | `<Frame>`, `useFrame`, `useIframe`, `useIframeResize`, `useIframeRPC`, `useIframeEvent`, `useIframeTitle`, `useIframeInert` |
 | `react-iframe-kit/child` | the page inside the iframe | no | `connectToParent` |
+| `react-iframe-kit/child/lite` | the page inside the iframe, when it needs no RPC | no | `connectToParent` for resize, title and inert only: 4 kB instead of 6 kB |
 | `react-iframe-kit/child/react` | the page inside the iframe | yes | `useParent`, `useParentEvent` |
+| `react-iframe-kit/testing` | your tests | no | `mockChild`, `mockParent` |
 
-A page without a bundler can load the child entry from a CDN as a script; it defines a
-global `ReactIframeKit`:
+A page without a bundler can load a child entry from a CDN as a script; it defines a
+global `ReactIframeKit`. For a page that only needs to be sized, the lite build is enough:
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/react-iframe-kit/dist/child.global.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/react-iframe-kit/dist/child-lite.global.js"></script>
 <script>
   ReactIframeKit.connectToParent({ allowedOrigins: ['https://app.example.com'], autoResize: true });
 </script>
 ```
+
+With methods or events, load `dist/child.global.js` instead.
 
 ## Render React into an iframe
 

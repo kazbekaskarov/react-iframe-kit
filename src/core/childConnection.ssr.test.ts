@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
-import { connectToParent } from './childConnection';
+import { connectToParent } from './connectToParent';
 
 // docs/design.md → SSR: `connectToParent` on the server is a no-op that stays idle.
 describe('connectToParent on the server', () => {

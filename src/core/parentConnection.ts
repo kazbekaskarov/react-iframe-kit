@@ -14,6 +14,7 @@ import {
 } from './origin';
 import {
   highestCommonVersion,
+  methodNotFound,
   parsePortMessage,
   parseWindowMessage,
   RIK,
@@ -330,11 +331,7 @@ class ParentConnectionImpl implements ParentConnection {
             type: 'result',
             id: message.id,
             ok: false,
-            error: {
-              name: 'IframeKitError',
-              message: `no method named "${message.method}"`,
-              code: 'RIK_METHOD_NOT_FOUND',
-            },
+            error: methodNotFound(message.method),
           });
         }
         break;

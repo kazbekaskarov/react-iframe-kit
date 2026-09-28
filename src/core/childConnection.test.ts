@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { connectToParent, onParentEvent, onParentStatusChange } from './childConnection';
+import { connectToParentLite, onParentStatusChange } from './childConnection';
+import { connectToParent, onParentEvent } from './connectToParent';
 import { IframeKitError } from './errors';
 
 interface FakeParentWindow {
@@ -353,6 +354,62 @@ describe('autoResize', () => {
     // No further assertions on DOM mutation triggering another report: the important,
     // testable contract is that dispose() doesn't throw and status reflects release.
     expect(handle.status).toBe('idle');
+  });
+});
+
+describe('lite connectToParent', () => {
+  function collect(parentPort: MessagePort): unknown[] {
+    const received: unknown[] = [];
+    parentPort.onmessage = (event) => received.push(event.data);
+    parentPort.start?.();
+    return received;
+  }
+
+  it('connects without RPC, and answers a call with RIK_METHOD_NOT_FOUND', async () => {
+    const { parent } = frame();
+    const handle = connectToParentLite({ allowedOrigins: [location.origin] });
+    const { parentPort } = connect(parent);
+    await handle.whenConnected();
+    expect(handle.status).toBe('connected');
+
+    const received = collect(parentPort);
+    parentPort.postMessage({ rik: 1, type: 'result', id: 'r1', ok: true, value: 1 }); // ignored
+    parentPort.postMessage({ rik: 1, type: 'event', name: 'theme', payload: 'dark' }); // ignored
+    parentPort.postMessage({ rik: 1, type: 'call', id: 'c1', method: 'add', args: [] });
+    await waitFor(() => received.some((m) => (m as { type: string }).type === 'result'));
+    expect(received).toContainEqual({
+      rik: 1,
+      type: 'result',
+      id: 'c1',
+      ok: false,
+      error: {
+        name: 'IframeKitError',
+        message: 'no method named "add"',
+        code: 'RIK_METHOD_NOT_FOUND',
+      },
+    });
+    handle.dispose();
+  });
+
+  it('shares the page connection with the full one, which adds RPC once connected', async () => {
+    const { parent } = frame();
+    const lite = connectToParentLite({ allowedOrigins: [location.origin], debug: true });
+    vi.spyOn(console, 'debug').mockImplementation(() => {});
+    const { parentPort } = connect(parent);
+    await lite.whenConnected();
+
+    // Created after the handshake: the engine must start out connected.
+    const full = connectToParent({
+      allowedOrigins: [location.origin],
+      methods: { add: (a: number, b: number) => a + b },
+    });
+    expect(full.status).toBe('connected');
+    const received = collect(parentPort);
+    parentPort.postMessage({ rik: 1, type: 'call', id: 'c2', method: 'add', args: [2, 3] });
+    await waitFor(() => received.length > 0);
+    expect(received).toContainEqual({ rik: 1, type: 'result', id: 'c2', ok: true, value: 5 });
+    full.dispose();
+    lite.dispose();
   });
 });
 

@@ -69,6 +69,26 @@
         "default": "./dist/child/index.cjs"
       }
     },
+    "./child/lite": {
+      "development": {
+        "import": {
+          "types": "./dist/child/lite.d.ts",
+          "default": "./dist/dev/child/lite.js"
+        },
+        "require": {
+          "types": "./dist/child/lite.d.cts",
+          "default": "./dist/dev/child/lite.cjs"
+        }
+      },
+      "import": {
+        "types": "./dist/child/lite.d.ts",
+        "default": "./dist/child/lite.js"
+      },
+      "require": {
+        "types": "./dist/child/lite.d.cts",
+        "default": "./dist/child/lite.cjs"
+      }
+    },
     "./child/react": {
       "development": {
         "import": {
@@ -115,6 +135,9 @@
     "*": {
       "child": [
         "./dist/child/index.d.cts"
+      ],
+      "child/lite": [
+        "./dist/child/lite.d.cts"
       ],
       "child/react": [
         "./dist/child/react.d.cts"

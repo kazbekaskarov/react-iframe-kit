@@ -32,10 +32,13 @@ const size = useIframeResize(ref, { axis: 'height', maxHeight: 1600 });
   own size:
 
 ```ts
-import { connectToParent } from 'react-iframe-kit/child';
+import { connectToParent } from 'react-iframe-kit/child/lite';
 
 connectToParent({ allowedOrigins: ['https://app.example.com'], autoResize: true });
 ```
+
+`react-iframe-kit/child/lite` is the child entry without RPC, about 4 kB instead of 6 kB.
+Import from `react-iframe-kit/child` instead when the page also exposes methods or events.
 
 The mode is detected again after every `load`, so an iframe that navigates between the
 two keeps working. If a same-origin child also runs `autoResize`, its reports take over:

@@ -51,6 +51,15 @@ For the page inside the iframe. No React needed; also available as a `<script>`
 `connectToParent` options: `allowedOrigins` (required), `unsafeAllowAnyOrigin`, `methods`,
 `timeout`, `connectTimeout`, `autoResize` (`true` or `{ measure }`), `syncTitle`, `debug`.
 
+### `react-iframe-kit/child/lite`
+
+`connectToParent` without RPC and events, for a page that only needs `autoResize`,
+`syncTitle` and inert: about 4 kB instead of 6 kB. Same options minus `methods`, `timeout`
+and `connectTimeout`; the handle has `status`, `whenConnected()` and `dispose()`. A call
+from the parent is answered with `RIK_METHOD_NOT_FOUND`. It shares the page's connection
+with the full `connectToParent`, so both can be used on one page. Also exports
+`IframeKitError` and `isIframeKitError`, and ships as `dist/child-lite.global.js`.
+
 `ParentHandle`: `status` (`'idle' | 'connecting' | 'connected'`), `remote`,
 `emit(name, payload?)`, `on(name, handler) => off`, `whenConnected()`, `dispose()`.
 

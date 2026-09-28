@@ -99,6 +99,13 @@ export type PortMessage =
   | ResultMessage
   | EventMessage;
 
+/** The error for a call to a method this side doesn't have (or with no RPC at all). */
+export const methodNotFound = (method: string): SerializedError => ({
+  name: 'IframeKitError',
+  message: `no method named "${method}"`,
+  code: 'RIK_METHOD_NOT_FOUND',
+});
+
 function record(data: unknown): Record<string, unknown> | null {
   if (typeof data !== 'object' || data === null) return null;
   const d = data as Record<string, unknown>;

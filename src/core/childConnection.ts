@@ -1,10 +1,10 @@
 /**
  * The child side of the handshake: one connection per page, shared by every
- * `connectToParent` caller. See docs/design.md → Handshake, Connection sharing,
- * Resize (child `autoResize`).
+ * `connectToParent` caller, and the lite `connectToParent` (no RPC). The full one, with
+ * RPC, is in connectToParent.ts. See docs/design.md → Handshake, Connection sharing,
+ * Resize (child `autoResize`), Package layout (`child/lite`).
  */
 
-import type { AnySide, Emit, LocalMethods, On, Remote, SideShape } from './contract';
 import { logProtocolMessage } from './debugLog';
 import { IframeKitError } from './errors';
 import { randomId } from './id';
@@ -18,13 +18,20 @@ import {
   originAllowed,
   sameOriginMatchers,
 } from './origin';
-import { parsePortMessage, parseWindowMessage, RIK, SUPPORTED_VERSIONS } from './protocol';
+import {
+  methodNotFound,
+  parsePortMessage,
+  parseWindowMessage,
+  RIK,
+  SUPPORTED_VERSIONS,
+} from './protocol';
 import { getRegistry } from './registry';
-import { type RpcAcquireOptions, RpcEngine, type RpcHandle } from './rpc';
+import type { RpcAcquireOptions, RpcEngine, RpcHandle } from './rpc';
 
 export type ChildStatus = 'idle' | 'connecting' | 'connected';
 
-export interface ConnectToParentOptions<LocalSide extends SideShape = AnySide> {
+/** `connectToParent` options that need no RPC: all of the lite one's. */
+export interface LiteConnectToParentOptions {
   /** Which origins may complete the handshake. Required; see docs/design.md → Security. */
   allowedOrigins: OriginMatcher[];
   unsafeAllowAnyOrigin?: boolean | undefined;
@@ -37,24 +44,11 @@ export interface ConnectToParentOptions<LocalSide extends SideShape = AnySide> {
    * Title.
    */
   syncTitle?: boolean | undefined;
-  /** Methods this page exposes to the parent. See docs/design.md → RPC and events API. */
-  methods?: LocalMethods<LocalSide> | undefined;
-  /** Per call, from send to result. Default 10 s; `Infinity` is allowed. */
-  timeout?: number | undefined;
-  connectTimeout?: number | undefined;
 }
 
-export interface ParentHandle<
-  RemoteSide extends SideShape = AnySide,
-  LocalSide extends SideShape = AnySide,
-> {
+/** The handle of the lite `connectToParent`: the full one's, without RPC. */
+export interface LiteParentHandle {
   readonly status: ChildStatus;
-  /** The parent's methods; calls made before connecting are queued. */
-  remote: Remote<RemoteSide>;
-  /** Emits one of this page's events to the parent. */
-  emit: Emit<LocalSide>;
-  /** Subscribes to one of the parent's events; returns the unsubscribe function. */
-  on: On<RemoteSide>;
   /** Resolves on the next `'connected'`; rejects `RIK_DESTROYED` on dispose. */
   whenConnected(): Promise<void>;
   /** Releases this caller's share of the page's connection. Safe to call once. */
@@ -74,7 +68,7 @@ function getInstance(): string {
   return registry.childInstance;
 }
 
-class ChildConnectionImpl {
+export class ChildConnectionImpl {
   status: ChildStatus = 'idle';
 
   private readonly instance: string;
@@ -85,7 +79,8 @@ class ChildConnectionImpl {
   private port: MessagePort | undefined;
   /** On if any acquirer enabled it. See docs/design.md → Connection sharing. */
   private debug = false;
-  private readonly rpc = new RpcEngine();
+  /** Created by the first RPC user, so pages without RPC don't bundle it. */
+  private rpc: RpcEngine | undefined;
   private statusListeners = new Set<(status: ChildStatus) => void>();
 
   private autoResizeUsers = 0;
@@ -144,12 +139,26 @@ class ChildConnectionImpl {
     this.allowedOrigins = options.allowedOrigins;
     if (options.debug) {
       this.debug = true;
-      this.rpc.setDebug(true);
+      this.rpc?.setDebug(true);
     }
   }
 
-  acquireRpc(user: object, options: RpcAcquireOptions): RpcHandle {
+  /**
+   * `Engine` is passed in rather than imported, as on the parent side: the lite
+   * `connectToParent` never calls this, so it doesn't bundle RPC.
+   */
+  acquireRpc(user: object, options: RpcAcquireOptions, Engine: typeof RpcEngine): RpcHandle {
+    if (!this.rpc) {
+      this.rpc = new Engine();
+      this.rpc.setDebug(this.debug);
+      if (this.port) this.connectRpc(this.port);
+    }
     return this.rpc.acquire(user, options);
+  }
+
+  // No `logProtocolMessage` in the sender: `RpcEngine` logs what it sends.
+  private connectRpc(port: MessagePort): void {
+    this.rpc?.connected((rpcMessage, transferables) => port.postMessage(rpcMessage, transferables));
   }
 
   onStatusChange(callback: (status: ChildStatus) => void): () => void {
@@ -256,7 +265,7 @@ class ChildConnectionImpl {
     if (this.port) {
       // A replaced session: calls sent over the old port can no longer be answered.
       this.port.close();
-      this.rpc.disconnected();
+      this.rpc?.disconnected();
       this.setInert(false); // the new session says again if it wants it
     }
 
@@ -269,8 +278,7 @@ class ChildConnectionImpl {
     logProtocolMessage(this.debug, '→', ready);
 
     this.setStatus('connected');
-    // No `logProtocolMessage` in the sender: `RpcEngine` logs what it sends.
-    this.rpc.connected((rpcMessage, transferables) => port.postMessage(rpcMessage, transferables));
+    this.connectRpc(port);
     this.flushSize();
     this.sentTitle = undefined; // a new session hasn't got it yet
     this.flushTitle();
@@ -286,7 +294,7 @@ class ChildConnectionImpl {
         logProtocolMessage(this.debug, '←', message);
         this.port?.close();
         this.port = undefined;
-        this.rpc.disconnected();
+        this.rpc?.disconnected();
         this.setInert(false);
         this.setStatus('connecting');
         break;
@@ -295,13 +303,24 @@ class ChildConnectionImpl {
         this.setInert(message.inert);
         break;
       case 'call':
-        this.rpc.handleCall(message);
+        if (this.rpc) this.rpc.handleCall(message);
+        else {
+          // No RPC on this page (the lite `connectToParent`): answer the way the engine
+          // would for a method it doesn't have.
+          this.port?.postMessage({
+            rik: RIK,
+            type: 'result',
+            id: message.id,
+            ok: false,
+            error: methodNotFound(message.method),
+          });
+        }
         break;
       case 'result':
-        this.rpc.handleResult(message);
+        this.rpc?.handleResult(message);
         break;
       case 'event':
-        this.rpc.handleEvent(message);
+        this.rpc?.handleEvent(message);
         break;
     }
   };
@@ -323,7 +342,7 @@ class ChildConnectionImpl {
       }
       this.port.close();
       this.port = undefined;
-      this.rpc.disconnected();
+      this.rpc?.disconnected();
     }
     this.setInert(false);
     this.setStatus('connecting');
@@ -399,55 +418,41 @@ class ChildConnectionImpl {
   };
 }
 
-function getConnection(): ChildConnectionImpl {
+/** @internal The page's one connection, created on first use. */
+export function getChildConnection(): ChildConnectionImpl {
   const registry = getRegistry();
   registry.childConnection ??= new ChildConnectionImpl();
   return registry.childConnection as ChildConnectionImpl;
 }
 
 /**
- * Connects this page to its parent frame. Returns a handle whose `status` tracks the
- * shared page-level connection; call `dispose()` when this caller no longer needs it.
- * A no-op that stays `'idle'` on the server and when the page isn't framed.
- * See docs/design.md → RPC and events API, Resize.
+ * @internal The part both `connectToParent`s share. `setup` adds the caller's own part
+ * (the full one's RPC) and returns its cleanup; it runs after the connection is
+ * acquired, and a throw from it or from `autoResize` releases everything taken so far.
  */
-export function connectToParent<
-  RemoteSide extends SideShape = AnySide,
-  LocalSide extends SideShape = AnySide,
->(options: ConnectToParentOptions<LocalSide>): ParentHandle<RemoteSide, LocalSide> {
+export function openParentHandle(
+  options: LiteConnectToParentOptions,
+  setup?: (connection: ChildConnectionImpl) => () => void,
+): LiteParentHandle {
   const allowedOrigins = normalizeOriginMatchers(
     options.allowedOrigins,
     options.unsafeAllowAnyOrigin,
   );
-  const connection = getConnection();
+  const connection = getChildConnection();
   connection.acquire({ allowedOrigins, debug: options.debug });
 
-  // Each caller is its own RPC user: its methods, handlers and calls are released
-  // with it, without touching other callers on the same page connection.
-  let rpc: RpcHandle;
+  let cleanup: (() => void) | undefined;
   try {
-    rpc = connection.acquireRpc(
-      {},
-      {
-        methods: options.methods as RpcAcquireOptions['methods'],
-        timeout: options.timeout,
-        connectTimeout: options.connectTimeout,
-      },
-    );
+    cleanup = setup?.(connection);
+    if (options.autoResize) {
+      connection.startAutoResize(
+        typeof options.autoResize === 'object' ? options.autoResize.measure : undefined,
+      );
+    }
   } catch (error) {
+    cleanup?.();
     connection.release();
     throw error;
-  }
-
-  if (options.autoResize) {
-    const measure = typeof options.autoResize === 'object' ? options.autoResize.measure : undefined;
-    try {
-      connection.startAutoResize(measure);
-    } catch (error) {
-      rpc.release();
-      connection.release();
-      throw error;
-    }
   }
 
   if (options.syncTitle) connection.startTitleSync();
@@ -461,9 +466,6 @@ export function connectToParent<
     get status() {
       return disposed ? 'idle' : connection.status;
     },
-    remote: rpc.remote as Remote<RemoteSide>,
-    emit: rpc.emit as Emit<LocalSide>,
-    on: rpc.on as On<RemoteSide>,
     whenConnected() {
       if (disposed) return Promise.reject(destroyed());
       if (connection.status === 'connected') return Promise.resolve();
@@ -486,7 +488,7 @@ export function connectToParent<
       disposed = true;
       for (const onDispose of waiters) onDispose();
       waiters.clear();
-      rpc.release();
+      cleanup?.();
       if (options.autoResize) connection.stopAutoResize();
       if (options.syncTitle) connection.stopTitleSync();
       connection.release();
@@ -495,19 +497,16 @@ export function connectToParent<
 }
 
 /**
- * @internal For `useParentEvent`: registers `handler` on the page connection without
- * configuring it (a `connectToParent`/`useParent` caller does that).
+ * The lite `connectToParent` (`react-iframe-kit/child/lite`): the connection with
+ * `autoResize`, `syncTitle` and inert, and no RPC, so it doesn't bundle the RPC engine.
+ * It shares the page's connection with the full `connectToParent`. See docs/design.md →
+ * Package layout.
  */
-export function onParentEvent(name: string, handler: (payload: unknown) => void): () => void {
-  const rpc = getConnection().acquireRpc({}, {});
-  const off = rpc.on(name, handler);
-  return () => {
-    off();
-    rpc.release();
-  };
+export function connectToParentLite(options: LiteConnectToParentOptions): LiteParentHandle {
+  return openParentHandle(options);
 }
 
 /** @internal For `useParent`: fires immediately with the page connection's status. */
 export function onParentStatusChange(callback: (status: ChildStatus) => void): () => void {
-  return getConnection().onStatusChange(callback);
+  return getChildConnection().onStatusChange(callback);
 }
