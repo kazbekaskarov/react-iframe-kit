@@ -47,9 +47,10 @@ One npm package, subpath exports:
 
 | Entry | Runs in | Depends on React | Contents |
 |---|---|---|---|
-| `react-iframe-kit` | parent | yes | `<Frame>`, `useFrame`, `useIframe`, `useIframeResize`, `useIframeRPC`, `useIframeEvent`, `transfer`, `withOptions`, errors, types |
+| `react-iframe-kit` | parent | yes | `<Frame>`, `useFrame`, `useIframe`, `useIframeResize`, `useIframeRPC`, `useIframeEvent`, `useIframeTitle`, `transfer`, `withOptions`, errors, types |
 | `react-iframe-kit/child` | iframe | no | `connectToParent`, `transfer`, `withOptions`, errors, types |
 | `react-iframe-kit/child/react` | iframe | yes | `useParent`, `useParentEvent` |
+| `react-iframe-kit/testing` | tests (jsdom, happy-dom) | no | `mockChild`, see [Testing utilities](#testing-utilities) |
 
 The `child` entry also ships as an IIFE build (`dist/child.global.js`, global
 `ReactIframeKit`) for embedded pages that don't use a bundler (served via
@@ -986,6 +987,48 @@ summaries out of its size budget.
 - **Docs site** (`site/`, workflow "Docs"): a Playwright smoke test of the built site
   loads every page with no console errors, drives the live playground, and runs the
   RPC demo both ways.
+
+## Testing utilities
+
+`react-iframe-kit/testing` is for users' own tests of the parent side. In jsdom and
+happy-dom an iframe has no real page, so a component using `useIframeRPC` and friends
+never connects, and `postMessage` there is unreliable to mock by hand
+(jestjs/jest#6765, jsdom/jsdom#2245).
+
+```ts
+render(<Checkout />);
+const child = mockChild<ParentSide, ChildSide>(screen.getByTitle('Payment'), {
+  methods: { pay: async (amount) => ({ ok: true }) },
+});
+await child.whenConnected();
+child.resize({ width: 400, height: 300 });
+child.setTitle('Payment');
+child.emit('submitted', { id: '42' });
+await child.remote.getUser();
+child.dispose(); // like the page unloading: sends `bye`
+```
+
+- **The real protocol, not a stub.** `mockChild` plays the child's side of the
+  handshake and runs the real `RpcEngine`, so the parent code under test goes through
+  exactly what it does in a browser: origin checks, queueing, timeouts,
+  `RemoteError`, `RIK_CONNECTION_LOST` on `bye`.
+- **Over the iframe's own `contentWindow`.** Both environments give an attached
+  iframe a window. `mockChild` replaces that window's `postMessage` with an own
+  property, to receive the parent's syn prompts and `ack` (with its port), and
+  dispatches its own `syn` on the parent `window` with `source: contentWindow`. jsdom
+  rejects a `MessageEvent` whose `source` isn't a real window, which rules out a fake
+  window object; `dispose()` restores `postMessage`.
+- **Either order.** It sends a `syn` when created and answers the parent's prompt, so
+  it can be created before or after the hooks mount.
+- `origin` defaults to what the parent expects from the iframe's `src`.
+- Needs a global `MessageChannel` (Node ≥ 15, and Vitest's jsdom and happy-dom
+  environments). In happy-dom, an iframe with a remote `src` is fetched unless
+  `navigation.disableChildFrameNavigation` is set; `disableIframePageLoading`
+  instead leaves the iframe without a `contentWindow`, which `mockChild` needs.
+- The same cases run in happy-dom (`src/testing/mockChild.test.tsx`) and jsdom
+  (`mockChild.jsdom.test.tsx`).
+- Not yet: a `mockParent` for testing the child side, which needs the page to be
+  framed (`window.parent !== window`).
 
 ## Docs site
 

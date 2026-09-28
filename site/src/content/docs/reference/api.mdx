@@ -67,6 +67,17 @@ and stays `'idle'`.
 `methods`, which always uses the latest. It returns `status: 'idle'` during server
 rendering and hydration.
 
+## `react-iframe-kit/testing`
+
+For your tests of the parent side, in jsdom or happy-dom. No React needed.
+
+| Export | Signature | Guide |
+|---|---|---|
+| `mockChild` | `<Remote, Local>(iframe, { methods?, origin?, timeout?, connectTimeout? }?) => MockChild` | [Testing](/react-iframe-kit/guides/testing/) |
+
+`MockChild`: `status`, `remote`, `emit(name, payload?)`, `on(name, handler) => off`,
+`resize({ width, height })`, `setTitle(title)`, `whenConnected()`, `dispose()`.
+
 ## Contract types
 
 | Type | |

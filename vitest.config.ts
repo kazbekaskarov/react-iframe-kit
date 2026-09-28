@@ -10,6 +10,10 @@ export default defineConfig({
         settings: {
           disableCSSFileLoading: true,
           disableJavaScriptFileLoading: true,
+          // mockChild tests give iframes a remote `src`: keep them on about:blank
+          // instead of fetching it. (`disableIframePageLoading` would leave them
+          // without a `contentWindow`, which mockChild needs.)
+          navigation: { disableChildFrameNavigation: true },
           handleDisabledFileLoadingAsSuccess: true,
         },
       },

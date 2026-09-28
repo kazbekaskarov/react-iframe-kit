@@ -89,6 +89,26 @@
         "default": "./dist/child/react.cjs"
       }
     },
+    "./testing": {
+      "development": {
+        "import": {
+          "types": "./dist/testing/index.d.ts",
+          "default": "./dist/dev/testing/index.js"
+        },
+        "require": {
+          "types": "./dist/testing/index.d.cts",
+          "default": "./dist/dev/testing/index.cjs"
+        }
+      },
+      "import": {
+        "types": "./dist/testing/index.d.ts",
+        "default": "./dist/testing/index.js"
+      },
+      "require": {
+        "types": "./dist/testing/index.d.cts",
+        "default": "./dist/testing/index.cjs"
+      }
+    },
     "./package.json": "./package.json"
   },
   "typesVersions": {
@@ -98,6 +118,9 @@
       ],
       "child/react": [
         "./dist/child/react.d.cts"
+      ],
+      "testing": [
+        "./dist/testing/index.d.cts"
       ]
     }
   },
@@ -153,6 +176,7 @@
     "@vitejs/plugin-react": "^6.1.1",
     "@vitest/coverage-v8": "^5.0.2",
     "happy-dom": "^20.14.5",
+    "jsdom": "^30.1.1",
     "publint": "^0.3.24",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",

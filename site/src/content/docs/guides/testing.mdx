@@ -1,0 +1,54 @@
+---
+title: Testing
+description: Test components that talk to an iframe in jsdom or happy-dom with mockChild.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+In jsdom and happy-dom an `<iframe>` has no real page inside, so a component using
+`useIframeRPC`, `useIframeEvent`, `useIframeResize` or `useIframeTitle` never connects.
+`mockChild` from `react-iframe-kit/testing` plays that page: it answers the handshake and
+your calls, and sends events, sizes and a title, over the same protocol as the real child.
+
+```tsx
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { mockChild } from 'react-iframe-kit/testing';
+import type { ChildSide, ParentSide } from './contract';
+
+test('pays through the widget', async () => {
+  render(<Checkout />);
+  const child = mockChild<ParentSide, ChildSide>(screen.getByTitle('Payment'), {
+    methods: { pay: async (amount) => ({ ok: amount > 0 }) },
+  });
+
+  await userEvent.click(screen.getByRole('button', { name: 'Pay' }));
+  await waitFor(() => expect(screen.getByText('Paid')).toBeInTheDocument());
+
+  child.dispose();
+});
+```
+
+Pass the parent's side first, like `connectToParent`. The iframe must be in the document;
+`mockChild` can be created before or after your component connects.
+
+| | |
+|---|---|
+| `remote` | The parent's methods, e.g. `await child.remote.getUser()`. |
+| `emit(name, payload?)` | Sends one of the page's events to the parent. |
+| `on(name, handler)` | Listens to the parent's events; returns the unsubscribe function. |
+| `resize({ width, height })` | Reports a content size, as `autoResize` would. |
+| `setTitle(title)` | Reports a page title, as `syncTitle` would. |
+| `whenConnected()` | Resolves once the handshake completes. |
+| `dispose()` | Unloads the page: calls still pending on the parent reject with `RIK_CONNECTION_LOST`. |
+| `status` | `'connecting'`, `'connected'` or `'disposed'`. |
+
+Options: `methods`, `origin` (default: the origin of the iframe's `src`), `timeout`,
+`connectTimeout`.
+
+<Aside title="Setup">
+  `mockChild` needs a global `MessageChannel`, which Node and Vitest's jsdom and happy-dom
+  environments provide. In happy-dom, set `navigation: { disableChildFrameNavigation: true }`
+  so an iframe with a remote `src` isn't fetched. Don't use `disableIframePageLoading`:
+  it leaves the iframe without a window, and `mockChild` needs one.
+</Aside>

@@ -6,6 +6,7 @@ const entry = {
   index: 'src/index.ts',
   'child/index': 'src/child/index.ts',
   'child/react': 'src/child/react.ts',
+  'testing/index': 'src/testing/index.ts',
 };
 
 // Only entries that export hooks are client modules. Shared chunks (core) must stay
