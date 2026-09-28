@@ -50,7 +50,7 @@ One npm package, subpath exports:
 | `react-iframe-kit` | parent | yes | `<Frame>`, `useFrame`, `useIframe`, `useIframeResize`, `useIframeRPC`, `useIframeEvent`, `useIframeTitle`, `transfer`, `withOptions`, errors, types |
 | `react-iframe-kit/child` | iframe | no | `connectToParent`, `transfer`, `withOptions`, errors, types |
 | `react-iframe-kit/child/react` | iframe | yes | `useParent`, `useParentEvent` |
-| `react-iframe-kit/testing` | tests (jsdom, happy-dom) | no | `mockChild`, see [Testing utilities](#testing-utilities) |
+| `react-iframe-kit/testing` | tests (jsdom, happy-dom) | no | `mockChild`, `mockParent`, see [Testing utilities](#testing-utilities) |
 
 The `child` entry also ships as an IIFE build (`dist/child.global.js`, global
 `ReactIframeKit`) for embedded pages that don't use a bundler (served via
@@ -1020,6 +1020,9 @@ child.dispose(); // like the page unloading: sends `bye`
   window object; `dispose()` restores `postMessage`.
 - **Either order.** It sends a `syn` when created and answers the parent's prompt, so
   it can be created before or after the hooks mount.
+- **Answers arrive in a later task**, like a real `postMessage`. The connections post
+  their first `syn` from their constructors, before the caller's options are applied;
+  a synchronous `ack` would be checked against an empty `allowedOrigins` and dropped.
 - `origin` defaults to what the parent expects from the iframe's `src`.
 - Needs a global `MessageChannel` (Node ≥ 15, and Vitest's jsdom and happy-dom
   environments). In happy-dom, an iframe with a remote `src` is fetched unless
@@ -1027,8 +1030,42 @@ child.dispose(); // like the page unloading: sends `bye`
   instead leaves the iframe without a `contentWindow`, which `mockChild` needs.
 - The same cases run in happy-dom (`src/testing/mockChild.test.tsx`) and jsdom
   (`mockChild.jsdom.test.tsx`).
-- Not yet: a `mockParent` for testing the child side, which needs the page to be
-  framed (`window.parent !== window`).
+
+`mockParent` is the other half, for testing `connectToParent`, `useParent` and
+`useParentEvent`:
+
+```ts
+const parent = mockParent<ChildSide, ParentSide>({ methods: { getUser: () => user } });
+render(<Widget />); // or connectToParent({ allowedOrigins, ... })
+await parent.whenConnected();
+await parent.remote.add(2, 3);
+parent.emit('theme', 'dark');
+parent.size; // { width, height } from autoResize; parent.title from syncTitle
+parent.dispose(); // like the parent unmounting: sends `bye`, un-frames the page
+```
+
+- **It frames the page.** The child side only connects when `window.parent !==
+  window`, so `mockParent` defines `window.parent` as the window of a hidden iframe of
+  its own (a real window, for jsdom's `MessageEvent` check), intercepts that window's
+  `postMessage` to receive the page's `syn`, and answers with an `ack` carrying a
+  real `MessageChannel` port. `dispose()` restores `window.parent` and removes the
+  iframe.
+- **Create it first.** A page connection made while the page wasn't framed stays
+  `'idle'` for good (it never listens). `mockParent` drops such a connection from the
+  registry, so the next `connectToParent` starts a framed one; handles made before
+  keep the idle one.
+- **Across tests.** The page connection is a singleton for the whole test file. After
+  a `dispose()` it goes back to `connecting`; the next `mockParent` prompts it with a
+  `syn`, as a real parent does, and it reconnects.
+- `origin` defaults to the test page's own origin; the page's `allowedOrigins` must
+  accept it.
+- `autoResize` needs layout that jsdom and happy-dom don't have: a 0 × 0 `<html>`
+  counts as not rendered and is never reported, even with a custom `measure`, and
+  jsdom has no `ResizeObserver`. Tests stub `documentElement.getBoundingClientRect`
+  (and `ResizeObserver` in jsdom).
+- The cases run in both environments (`mockParent.test.tsx`,
+  `mockParent.jsdom.test.tsx`); the idle-connection case has its own file, since it
+  needs a fresh registry.
 
 ## Docs site
 

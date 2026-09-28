@@ -16,6 +16,7 @@ import {
   SUPPORTED_VERSIONS,
 } from '../core/protocol';
 import { type RpcAcquireOptions, RpcEngine } from '../core/rpc';
+import { interceptPostMessage, receiveMessage } from './intercept';
 
 export type MockChildStatus = 'connecting' | 'connected' | 'disposed';
 
@@ -55,8 +56,6 @@ export interface MockChild<
    */
   dispose(): void;
 }
-
-type PostMessageArgs = [message: unknown, options?: unknown, transfer?: Transferable[]];
 
 /**
  * Plays the page inside `iframe` for the parent side under test. `iframe` must be in
@@ -107,12 +106,10 @@ export function mockChild<
   };
 
   const sendSyn = () =>
-    window.dispatchEvent(
-      new MessageEvent('message', {
-        data: { rik: RIK, type: 'syn', instance, versions: SUPPORTED_VERSIONS },
-        origin,
-        source: target,
-      }),
+    receiveMessage(
+      { rik: RIK, type: 'syn', instance, versions: SUPPORTED_VERSIONS },
+      origin,
+      target,
     );
 
   const closePort = () => {
@@ -133,7 +130,7 @@ export function mockChild<
   };
 
   // What the parent sends to the iframe's window: its syn prompts and the ack.
-  const intercept = (...[data, , transfer]: PostMessageArgs) => {
+  const restorePostMessage = interceptPostMessage(target, (data, transfer) => {
     if (status === 'disposed') return;
     const message = parseWindowMessage(data);
     if (message?.type === 'syn') {
@@ -159,12 +156,6 @@ export function mockChild<
     flush();
     for (const { resolve } of connectedWaiters) resolve();
     connectedWaiters.clear();
-  };
-  const ownPostMessage = Object.getOwnPropertyDescriptor(target, 'postMessage');
-  Object.defineProperty(target, 'postMessage', {
-    value: intercept,
-    configurable: true,
-    writable: true,
   });
 
   sendSyn();
@@ -197,8 +188,7 @@ export function mockChild<
       status = 'disposed';
       for (const { reject } of connectedWaiters) reject(destroyed());
       connectedWaiters.clear();
-      if (ownPostMessage) Object.defineProperty(target, 'postMessage', ownPostMessage);
-      else delete (target as { postMessage?: unknown }).postMessage;
+      restorePostMessage();
     },
   };
 }
