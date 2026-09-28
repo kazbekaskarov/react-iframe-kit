@@ -48,7 +48,9 @@ export default defineConfig([
     platform: 'browser',
     target: 'es2020',
     outDir: 'dist',
-    outputOptions: { entryFileNames: '[name].js' },
+    // Nothing tree-shakes a `<script>` build after us, so pure annotations are dead
+    // weight here; the ESM/CJS builds keep them for the user's bundler.
+    outputOptions: { entryFileNames: '[name].js', comments: { annotation: false } },
     clean: false,
     minify: true,
     sourcemap: true,

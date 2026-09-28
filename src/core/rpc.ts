@@ -79,14 +79,18 @@ function reportUnhandled(error: unknown): void {
 }
 
 /**
- * `debug` detail for a result: the method it answers and how long since `start`.
- * Dev-only, like the summary it's appended to (see `logProtocolMessage`).
+ * A timestamp for `debug` timings, which are dev-only like the summary they're
+ * appended to (see `logProtocolMessage`): production doesn't read the clock at all.
  */
-function timing(method: string, start: number): string | undefined {
+function now(): number {
   /* v8 ignore next: __DEV__ is compile-time and `true` in tests. */
-  if (!__DEV__) return undefined;
-  return `${method}, ${Math.round(performance.now() - start)} ms`;
+  if (!__DEV__) return 0;
+  return performance.now();
 }
+
+/** `debug` detail for a result: the method it answers and how long since `start`. */
+const timing = (method: string, start: number): string =>
+  `${method}, ${Math.round(now() - start)} ms`;
 
 function timeoutError(phase: 'connect' | 'response', ms: number): IframeKitError {
   const message =
@@ -225,7 +229,7 @@ export class RpcEngine {
 
   handleCall(message: CallMessage): void {
     logProtocolMessage(this.debug, '←', message);
-    void this.runLocalMethod(message, performance.now());
+    void this.runLocalMethod(message, now());
   }
 
   private async runLocalMethod(message: CallMessage, start: number): Promise<void> {
@@ -256,7 +260,7 @@ export class RpcEngine {
   ): void {
     if (!this.send) return; // the connection dropped while the method was running
     const { id } = call;
-    const detail = this.debug ? timing(call.method, start) : undefined;
+    const detail = __DEV__ && this.debug ? timing(call.method, start) : undefined;
     if (outcome.ok) {
       const { value, transferables } = extractTransferables(outcome.value);
       try {
@@ -299,7 +303,7 @@ export class RpcEngine {
       this.debug,
       '←',
       message,
-      entry && this.debug ? timing(entry.method, entry.sentAt) : undefined,
+      __DEV__ && entry && this.debug ? timing(entry.method, entry.sentAt) : undefined,
     );
     if (!entry) return; // unknown id: a stale/duplicate result, or already settled locally (e.g. abort)
     this.pending.delete(message.id);
@@ -421,7 +425,7 @@ export class RpcEngine {
     const entry: PendingCall = {
       user,
       method,
-      sentAt: performance.now(),
+      sentAt: now(),
       resolve,
       reject,
       timer: undefined,
