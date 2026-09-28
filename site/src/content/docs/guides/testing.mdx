@@ -1,14 +1,20 @@
 ---
 title: Testing
-description: Test components that talk to an iframe in jsdom or happy-dom with mockChild.
+description: Test both sides of an iframe connection in jsdom or happy-dom with mockChild and mockParent.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
-In jsdom and happy-dom an `<iframe>` has no real page inside, so a component using
-`useIframeRPC`, `useIframeEvent`, `useIframeResize` or `useIframeTitle` never connects.
-`mockChild` from `react-iframe-kit/testing` plays that page: it answers the handshake and
-your calls, and sends events, sizes and a title, over the same protocol as the real child.
+In jsdom and happy-dom there is no real page on the other side of an iframe, so nothing
+connects. `react-iframe-kit/testing` plays the missing side over the same protocol as the
+real one:
+
+- `mockChild` is the page **inside** the iframe, for testing the parent: `useIframeRPC`,
+  `useIframeEvent`, `useIframeResize`, `useIframeTitle`.
+- `mockParent` is the page **around** it, for testing the child: `connectToParent`,
+  `useParent`, `useParentEvent`.
+
+## Testing the parent: `mockChild`
 
 ```tsx
 import { render, screen, waitFor } from '@testing-library/react';
@@ -46,9 +52,67 @@ Pass the parent's side first, like `connectToParent`. The iframe must be in the 
 Options: `methods`, `origin` (default: the origin of the iframe's `src`), `timeout`,
 `connectTimeout`.
 
-<Aside title="Setup">
-  `mockChild` needs a global `MessageChannel`, which Node and Vitest's jsdom and happy-dom
-  environments provide. In happy-dom, set `navigation: { disableChildFrameNavigation: true }`
-  so an iframe with a remote `src` isn't fetched. Don't use `disableIframePageLoading`:
-  it leaves the iframe without a window, and `mockChild` needs one.
+## Testing the child: `mockParent`
+
+```tsx
+import { render, screen, waitFor } from '@testing-library/react';
+import { mockParent } from 'react-iframe-kit/testing';
+import type { ChildSide, ParentSide } from './contract';
+
+test('loads the user from the host page', async () => {
+  const parent = mockParent<ChildSide, ParentSide>({
+    origin: 'https://app.example.com', // must be in the page's allowedOrigins
+    methods: { getUser: () => ({ name: 'Ann' }) },
+  });
+  render(<Widget />);
+
+  await waitFor(() => expect(screen.getByText('Hello, Ann')).toBeInTheDocument());
+  await expect(parent.remote.reset()).resolves.toBe(true);
+
+  parent.dispose();
+});
+```
+
+Pass the page's side first, like `useIframeRPC`. **Create it before the code under test
+connects:** it makes the test page look framed, and a connection started before that stays
+`'idle'`.
+
+| | |
+|---|---|
+| `remote` | The page's methods. |
+| `emit(name, payload?)` | Sends one of the parent's events to the page. |
+| `on(name, handler)` | Listens to the page's events; returns the unsubscribe function. |
+| `size` | The last size the page reported with `autoResize`, or `undefined`. |
+| `title` | The last title the page reported with `syncTitle`, or `undefined`. |
+| `whenConnected()` | Resolves once the handshake completes. |
+| `dispose()` | Goes away like an unmounting parent: the page's pending calls reject with `RIK_CONNECTION_LOST`, and the page is no longer framed. |
+| `status` | `'connecting'`, `'connected'` or `'disposed'`. |
+
+Options: `methods`, `origin` (default: the test page's origin), `timeout`,
+`connectTimeout`.
+
+The page's connection lives for the whole test file. After `dispose()`, the next
+`mockParent` reconnects it, so each test can create its own.
+
+<Aside title="autoResize in jsdom and happy-dom">
+  Neither has layout: `<html>` measures 0 × 0, which counts as not rendered, so
+  `autoResize` reports nothing, even with a custom `measure`. Give `<html>` a size, and in
+  jsdom add a `ResizeObserver`:
+
+  ```ts
+  vi.spyOn(document.documentElement, 'getBoundingClientRect').mockReturnValue(
+    new DOMRect(0, 0, 1024, 768),
+  );
+  globalThis.ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {} };
+  ```
 </Aside>
+
+## Setup
+
+Both need a global `MessageChannel`, which Node and Vitest's jsdom and happy-dom
+environments provide. `mockParent` adds a hidden `<iframe>` to the document while it
+exists.
+
+In happy-dom, set `navigation: { disableChildFrameNavigation: true }` so an iframe with a
+remote `src` isn't fetched. Don't use `disableIframePageLoading`: it leaves iframes
+without a window, and both mocks need one.
