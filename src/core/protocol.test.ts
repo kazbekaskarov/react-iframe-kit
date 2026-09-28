@@ -238,6 +238,19 @@ describe('parsePortMessage', () => {
     });
   });
 
+  it('parses title', () => {
+    expect(parsePortMessage({ rik: 1, type: 'title', title: 'Checkout', extra: 1 })).toEqual({
+      rik: 1,
+      type: 'title',
+      title: 'Checkout',
+    });
+  });
+
+  it('rejects title with a non-string title', () => {
+    expect(parsePortMessage({ rik: 1, type: 'title', title: 42 })).toBeNull();
+    expect(parsePortMessage({ rik: 1, type: 'title' })).toBeNull();
+  });
+
   it('rejects event with a non-string name', () => {
     expect(parsePortMessage({ rik: 1, type: 'event', name: 42 })).toBeNull();
   });

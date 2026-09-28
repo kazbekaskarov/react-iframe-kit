@@ -15,6 +15,7 @@ For the page that owns the `<iframe>`.
 | `useIframeResize` | `(target, options?) => { width, height } \| null` | [Resize](/react-iframe-kit/guides/resize/) |
 | `useIframeRPC` | `<Remote, Local>(target, options?) => { remote, emit, status, error }` | [RPC](/react-iframe-kit/guides/rpc/) |
 | `useIframeEvent` | `<Remote, Name>(target, name, handler, options?) => void` | [RPC](/react-iframe-kit/guides/rpc/) |
+| `useIframeTitle` | `(target, { origin? }?) => string \| undefined` | [RPC](/react-iframe-kit/guides/rpc/#the-iframes-title) |
 | `withOptions` | `(remote.method, { signal?, timeout? }) => sameSignature` | [RPC](/react-iframe-kit/guides/rpc/) |
 | `transfer` | `(value, transferables) => value` | [RPC](/react-iframe-kit/guides/rpc/) |
 | `IframeKitError`, `RemoteError`, `TimeoutError`, `isIframeKitError` | | [Errors](/react-iframe-kit/reference/errors/) |
@@ -47,7 +48,7 @@ For the page inside the iframe. No React needed; also available as a `<script>`
 | `IframeKitError`, `RemoteError`, `TimeoutError`, `isIframeKitError` | |
 
 `connectToParent` options: `allowedOrigins` (required), `unsafeAllowAnyOrigin`, `methods`,
-`timeout`, `connectTimeout`, `autoResize` (`true` or `{ measure }`), `debug`.
+`timeout`, `connectTimeout`, `autoResize` (`true` or `{ measure }`), `syncTitle`, `debug`.
 
 `ParentHandle`: `status` (`'idle' | 'connecting' | 'connected'`), `remote`,
 `emit(name, payload?)`, `on(name, handler) => off`, `whenConnected()`, `dispose()`.

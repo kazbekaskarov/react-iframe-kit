@@ -16,6 +16,7 @@ function Child() {
   const { remote, emit, status } = useParent<ParentSide, ChildSide>({
     allowedOrigins: [/^http:\/\/127\.0\.0\.1:\d+$/],
     timeout: 500,
+    syncTitle: true,
     methods: {
       add: (a, b) => a + b,
       echo: (value) => value,
@@ -43,6 +44,14 @@ function Child() {
       <output data-testid="unbounded">{unbounded}</output>
       <button type="button" onClick={() => emit('submitted', { id: '42' })}>
         submit
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          document.title = 'Renamed child';
+        }}
+      >
+        rename
       </button>
     </>
   );

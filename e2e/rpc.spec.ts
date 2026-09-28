@@ -36,6 +36,13 @@ test('parent to child calls resolve, and errors arrive as RemoteError', async ({
   await expect(page.getByTestId('result')).toHaveText('RemoteError:E_NOPE');
 });
 
+test('the child page title reaches useIframeTitle, and follows changes', async ({ page }) => {
+  await expect(page.getByTestId('child-title')).toHaveText('react-iframe-kit e2e: RPC child');
+  const child = page.frameLocator('iframe[title="frame"]');
+  await child.getByRole('button', { name: 'rename' }).click();
+  await expect(page.getByTestId('child-title')).toHaveText('Renamed child');
+});
+
 test('events flow both ways', async ({ page }) => {
   const child = page.frameLocator('iframe[title="frame"]');
   await page.getByRole('button', { name: 'dark' }).click();

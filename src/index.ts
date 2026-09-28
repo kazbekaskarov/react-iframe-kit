@@ -31,3 +31,5 @@ export { useIframeResize } from './react/useIframeResize';
 export type { RPCStatus, UseIframeRPCOptions, UseIframeRPCResult } from './react/useIframeRPC';
 export { useIframeRPC } from './react/useIframeRPC';
 export type { IframeTarget } from './react/useIframeTarget';
+export type { UseIframeTitleOptions } from './react/useIframeTitle';
+export { useIframeTitle } from './react/useIframeTitle';

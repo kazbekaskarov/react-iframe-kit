@@ -95,13 +95,13 @@ Size budgets (min+gzip, React excluded, enforced by size-limit per import scenar
 | Scenario | Budget | Measured |
 |---|---|---|
 | `useIframe` only | ≤ 1.5 kB | 1.25 kB |
-| `useIframeResize` only (pulls in the handshake/connection, not RPC) | ≤ 5 kB | 4.75 kB |
-| `<Frame>` (portal + resize + copyStyles) | ≤ 6.5 kB | 6.3 kB |
-| `useIframeRPC` + `useIframeEvent` | ≤ 6.5 kB | 5.86 kB |
-| entire parent entry | ≤ 10 kB | 9.52 kB |
-| `child` entry (`connectToParent` with RPC + `autoResize`) | ≤ 6 kB | 5.82 kB |
-| `child/react` entry (`useParent`, `useParentEvent`) | ≤ 7 kB | 6.68 kB |
-| `child` IIFE | ≤ 6 kB | 5.78 kB |
+| `useIframeResize` only (pulls in the handshake/connection, not RPC) | ≤ 5 kB | 4.84 kB |
+| `<Frame>` (portal + resize + copyStyles) | ≤ 6.5 kB | 6.43 kB |
+| `useIframeRPC` + `useIframeEvent` | ≤ 6.5 kB | 6.03 kB |
+| entire parent entry | ≤ 10 kB | 9.8 kB |
+| `child` entry (`connectToParent` with RPC + `autoResize` + `syncTitle`) | ≤ 6.25 kB | 6.12 kB |
+| `child/react` entry (`useParent`, `useParentEvent`) | ≤ 7 kB | 6.98 kB |
+| `child` IIFE | ≤ 6.25 kB | 6.08 kB |
 
 `<Frame>` is the batteries-included component; size-sensitive users build on
 `useIframe`. Module-level calls such as `forwardRef(...)` must be marked
@@ -120,6 +120,9 @@ users pay only for parsing the three extra message types (+0.2 kB). A connection
 with no engine answers an incoming `call` with `RIK_METHOD_NOT_FOUND` itself. The
 child can't do the same: every `connectToParent` handle has `remote`/`emit`/`on`,
 so the `child` entry and IIFE grew by about 2.7 kB.
+[Title](#title) sync added about 0.2 kB to the child, which can't be tree-shaken for
+the same reason (`syncTitle` is an option, not an import); the `child` entry and IIFE
+budgets were raised from 6 kB to 6.25 kB.
 
 ## Two modes
 
@@ -361,6 +364,7 @@ child                                         parent
 | `result` | `id`, `ok: false`, `error: SerializedError` | RPC failure |
 | `event` | `name`, `payload` | fire-and-forget event |
 | `size` | `width`, `height`, `loop?` | child content size; `loop: true` when the child's feedback-loop guard is holding growth |
+| `title` | `title` | child → parent with `syncTitle`: the child's trimmed `document.title` (see [Title](#title)) |
 | `bye` | — | the sending side is disposing or unloading |
 
 `cancel` (`id`) is reserved for remote-side cancellation after v1.
@@ -716,6 +720,41 @@ known: in the child for `autoResize`, in the parent for same-origin mode.
 - Implementation: `src/core/loopGuard.ts`. Covered by e2e with a real `100vh + margin`
   page (must trip and stay still) and a 1.5 s linear accordion (must not trip).
 
+## Title
+
+Screen readers announce an iframe by its `title` (WCAG technique H64, axe-core
+`frame-title`). A cross-origin parent can't read the page's own title, so the child
+can send it, as iframe-resizer does:
+
+```ts
+// child
+connectToParent({ allowedOrigins, syncTitle: true });
+// parent
+const title = useIframeTitle(iframeRef, { origin }); // string | undefined
+<iframe ref={iframeRef} title={title ?? 'Checkout'} src={url} />;
+```
+
+- **Opt-in on the child.** A page title can hold private data (an inbox count, a
+  user name), so nothing is sent without `syncTitle`.
+- **The parent sets the attribute, through React.** The hook only returns the title;
+  setting `iframe.title` itself would fight the `title` prop React owns. A fallback
+  is needed anyway: the title arrives after the handshake, and older children or
+  children without `syncTitle` never send one.
+- The child sends `document.title`, trimmed, on connect (again to every new session)
+  and on every change: a `MutationObserver` on `<head>` (child list, character data,
+  subtree) catches both a new `<title>` element and new text in it. Unchanged titles
+  are skipped.
+- The parent connection caches the last title, like `size`, and forgets it when the
+  session ends (`bye`, a reload, a new instance), since the next page may not send
+  one. The hook returns `undefined` for an empty title, and never a title from a
+  previous iframe element.
+- The title is trusted like `size`: it is text the child chose to describe itself,
+  and it only ever reaches an attribute value.
+- Same-origin iframes need the same `syncTitle` for now; reading their
+  `contentDocument` directly would be possible but hasn't been needed.
+- Protocol: `title` is an additive port message (see
+  [Versioning](#versioning)): older parents ignore it, older children never send it.
+
 ## Security
 
 - **Parent expected origin:**
@@ -905,7 +944,8 @@ summaries out of its size budget.
     (`e2e/rpc.spec.ts`): calls both ways, a `RemoteError` carrying the remote `code`,
     events both ways, a call made while `useIframeRPC` was still `idle`, the child
     calling the parent right after connect, and a per-call `timeout: Infinity`
-    outliving a slow method that the default timeout rejects. Both fixtures run in
+    outliving a slow method that the default timeout rejects, and the child's
+    `syncTitle` reaching `useIframeTitle`, including a later change. Both fixtures run in
     StrictMode and the spec fails on any page error; that is how the need for the
     deferred RPC release (see [Connection sharing](#connection-sharing)) showed up;
   - `copyStyles` under a host CSP of `style-src 'nonce-…'` (`e2e/csp.spec.ts`; the
