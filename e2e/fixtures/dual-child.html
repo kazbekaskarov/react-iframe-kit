@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>react-iframe-kit e2e: two library copies, child</title>
+  </head>
+  <body>
+    <p id="parent-name">pending</p>
+    <script type="module">
+      import cjs from 'kit-cjs/child';
+      import * as esm from 'kit-esm/child';
+      import { startChild } from './dual-child';
+
+      startChild(esm, cjs);
+    </script>
+  </body>
+</html>

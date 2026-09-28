@@ -10,3 +10,7 @@ export const TRUSTED_TYPES_CSP: Record<string, string> = {
   'custom-trusted': `${REQUIRE}; trusted-types host`,
   'custom-string': REQUIRE,
 };
+
+// e2e/dual.spec.ts: the library's policy name, without 'allow-duplicates', so a second
+// library copy can't create the policy again and has to reuse the first one's.
+export const DUAL_HOST_CSP = TRUSTED_TYPES_CSP['allowlisted'] as string;
