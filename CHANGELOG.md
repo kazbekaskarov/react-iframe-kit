@@ -1,5 +1,27 @@
 # react-iframe-kit
 
+## 0.3.0
+
+### Minor Changes
+
+- a59ee02: New `react-iframe-kit/child/lite` entry, for embedded pages that only need to be sized, titled or made inert: its `connectToParent` has no RPC and events, and weighs 4.1 kB gzipped instead of 6.3 kB. It also ships as `dist/child-lite.global.js` for `<script>` use. It shares the page's connection with the full `connectToParent`, so both can be used on one page, and a call from the parent to a lite page fails fast with `RIK_METHOD_NOT_FOUND`. The full `react-iframe-kit/child` is unchanged for its users.
+- bda36e3: `useIframeResize`, `useIframeEvent`, `useIframeTitle` and `useIframeInert` take `debug` too, like `useIframeRPC`: every parent hook now shares the same connection options, exported as `IframeConnectionOptions`. Before, a page that only resized an iframe had no way to log its protocol traffic.
+- e4f9d06: New `react-iframe-kit/devtools` entry. `connectReduxDevTools()` shows every protocol message on the page in the Redux DevTools browser extension, as an action named by its summary (`→ call getUser #q9x7c1`) with the message as payload, whether or not `debug` is on. `onProtocolMessage(listener)` gives the same stream for your own tooling, across every copy of the library on the page, and `summarizeProtocolMessage` is the one-line summary both use.
+- 3315f5f: New `useIframeInert(iframe, inert)`: while `inert` is true, nothing inside the iframe can be clicked, focused or typed into. `inert` on the `<iframe>` alone lets keys through in Chromium and Safari, so the hook also makes the page inside inert: directly for a same-origin iframe or `<Frame>`, and through a new `inert` protocol message for a cross-origin page, which every `connectToParent` page now handles. The message is additive: older children ignore it and get only the attribute. `mockChild` gains an `inert` flag for tests.
+- 8bd2a6b: The page inside an iframe can share its title with the parent for screen readers: `connectToParent({ syncTitle: true })` (or `useParent`) sends `document.title` and every change to it, and the new `useIframeTitle(iframe)` hook returns it, for `<iframe title={title ?? 'Checkout'}>`. The new `title` protocol message is additive: older parents ignore it, and older children simply never send it.
+- 3042b69: New `react-iframe-kit/testing` entry with `mockChild(iframe, { methods })`, for testing components that talk to an iframe in jsdom or happy-dom. It plays the page inside the iframe over the real protocol: it answers the handshake and the parent's calls, calls the parent back through `remote`, and sends events, sizes (`resize`) and a title (`setTitle`). `dispose()` unloads it like a real page, so pending calls reject with `RIK_CONNECTION_LOST`.
+- b24b396: `react-iframe-kit/testing` gets `mockParent()`, for testing the page inside an iframe (`connectToParent`, `useParent`, `useParentEvent`) in jsdom or happy-dom. It makes the test page look framed and plays its parent over the real protocol: it answers the handshake and the page's calls, calls the page through `remote`, exchanges events, and records the size and title the page reports. `dispose()` goes away like an unmounting parent, and the next `mockParent` reconnects the page.
+- dca4c64: `<Frame>` and `useIframe` work on pages that enforce Trusted Types. The hook now sets the iframe's `srcdoc` itself, through a `react-iframe-kit` policy that can only create the library's empty default document; before, such a page threw during commit and took down the whole React tree. A custom `srcDoc` can be a `TrustedHTML`. A document the page still blocks is reported as `RIK_INVALID_OPTIONS` in `error` instead of throwing.
+  
+  Breaking for `useIframe` users: `frameProps` is now `{ ref }` without `srcDoc`, and the server-rendered `<iframe>` no longer has a `srcdoc` attribute (it is set on the client).
+
+### Patch Changes
+
+- 864c088: `<Frame>` warns in development about a missing or generic `title`, a `title` shared with another mounted `<Frame>`, and a negative `tabIndex`: the iframe accessibility problems axe-core reports as serious. The checks are removed from production builds.
+- 864c088: `debug: true` logs are easier to read in development: each line starts with a summary such as `call getUser #q9x7c1` or `result #q9x7c1 ok (getUser, 12 ms)`, pairing every result with its call and showing how long it took. The message object is still logged after it. Production builds log as before.
+- 38579f5: `useIframeResize` and `<Frame resize>` now apply a changed `minHeight`/`maxHeight`/`minWidth`/`maxWidth`, `axis` or `apply` immediately, instead of on the next content size change.
+- 2d41f03: The `<script>` build of the child (`dist/child.global.js`) is 0.2 kB smaller gzipped: it no longer ships pure annotations, which only matter to a bundler. Production builds also stop reading `performance.now()` on every RPC call, which only the development build's `debug` timings use.
+
 ## 0.2.0
 
 ### Minor Changes
