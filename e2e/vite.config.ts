@@ -61,7 +61,7 @@ export default defineConfig({
             'const exports = module.exports;',
             `const modules = { ${table.join(', ')} };`,
             'const require = (id) => {',
-            '  if (!(id in modules)) throw new Error(`cjs-build-as-esm: no shim for ${id}`);',
+            `  if (!(id in modules)) throw new Error('cjs-build-as-esm: no shim for ' + id);`,
             '  return modules[id];',
             '};',
             code,

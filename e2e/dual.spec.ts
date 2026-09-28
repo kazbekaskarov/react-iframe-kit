@@ -55,12 +55,19 @@ test.skip(Boolean(problem), problem);
 test('ESM and CJS copies share connections, the frame context, the policy and errors', async ({
   page,
 }) => {
+  // Firefox and WebKit log the library's own cross-origin probes, which it expects to
+  // fail: a syn posted while the child iframe is still on about:blank, and (WebKit)
+  // a caught read of its contentDocument.
+  const expected =
+    /Unable to post message to|does not match the recipient window’s origin|Blocked a frame with origin/;
   const errors: string[] = [];
+  const record = (text: string) => {
+    if (!expected.test(text)) errors.push(text);
+  };
   page.on('console', (message) => {
-    if (message.type() === 'error')
-      errors.push(`${message.text()} @ ${JSON.stringify(message.location())}`);
+    if (message.type() === 'error') record(message.text());
   });
-  page.on('pageerror', (error) => errors.push(`${error.name} | ${error.message} | ${error.stack}`));
+  page.on('pageerror', (error) => record(`${error.name}: ${error.message}`));
   await recordHandshakes(page);
 
   const response = await page.goto('/dual-host.html');
@@ -107,6 +114,5 @@ test('ESM and CJS copies share connections, the frame context, the policy and er
   expect([...new Set(toParent.map(({ instance }) => instance))]).toEqual([expect.any(String)]);
   const acks = (await handshakes(child)).filter(({ type }) => type === 'ack');
   expect(acks).toHaveLength(1);
-  console.log('ERRORS', JSON.stringify(errors, null, 1));
   expect(errors).toEqual([]);
 });
