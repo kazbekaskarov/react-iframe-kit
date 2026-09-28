@@ -22,7 +22,13 @@ export default defineConfig({
         { label: 'Start here', items: ['getting-started', 'comparison'] },
         {
           label: 'Guides',
-          items: ['guides/portal', 'guides/resize', 'guides/rpc', 'guides/security'],
+          items: [
+            'guides/portal',
+            'guides/resize',
+            'guides/rpc',
+            'guides/security',
+            'guides/testing',
+          ],
         },
         { label: 'Playground', items: ['playground'] },
         { label: 'Reference', items: ['reference/api', 'reference/errors'] },
