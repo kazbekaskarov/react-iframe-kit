@@ -1,6 +1,6 @@
 {
   "name": "react-iframe-kit",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Hooks-first React toolkit for iframes: portal rendering, auto-resize and a typed RPC bridge in one package.",
   "keywords": [
     "react",
