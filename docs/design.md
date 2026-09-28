@@ -778,8 +778,8 @@ const title = useIframeTitle(iframeRef, { origin }); // string | undefined
   are skipped.
 - The parent connection caches the last title, like `size`, and forgets it when the
   session ends (`bye`, a reload, a new instance), since the next page may not send
-  one. The hook returns `undefined` for an empty title, and never a title from a
-  previous iframe element.
+  one. The hook returns `null` for an empty title (like `useIframeResize` before a
+  size), and never a title from a previous iframe element.
 - The title is trusted like `size`: it is text the child chose to describe itself,
   and it only ever reaches an attribute value.
 - Same-origin iframes need the same `syncTitle` for now; reading their
@@ -1223,7 +1223,10 @@ These can't be settled on paper and need to be resolved by a prototype before v1
 
 ## Roadmap to v1
 
-1. Scaffold, CI, contributor hygiene.
+1. ~~Scaffold, CI, contributor hygiene.~~ Done: CI (lint, types, build, package, size,
+   unit on React 18 and 19, e2e on three engines, version skew, docs site), release
+   through changesets, CONTRIBUTING, SECURITY, CODE_OF_CONDUCT, issue and PR templates,
+   Dependabot.
 2. ~~Minimal Firefox #22847 repro on current React + Firefox.~~ Done: see
    [Portal mode](#portal-mode-and-the-firefox-fix-facebookreact22847).
 3. ~~`useIframe` + `<Frame>` (+ `copyStyles`) + Playwright regression + SSR/hydration
@@ -1247,3 +1250,17 @@ These can't be settled on paper and need to be resolved by a prototype before v1
    start running with the first release that ships the protocol. Along the way,
    `copyStyles` got its CSP test, which found and fixed the Firefox nonce issue
    described under [`<Frame>`](#frame).
+8. **Before v1.** Everything above is built; what's left is freezing it.
+   - ~~API consistency pass.~~ Done 2026-09-29: every parent hook takes the same
+     connection options (`IframeConnectionOptions`: `origin`, `unsafeAllowAnyOrigin`,
+     `debug`; before, only `useIframeRPC` had `debug`), and "nothing yet" is `null`
+     everywhere (`useIframeTitle`, `mockParent.size`/`title`, as `useIframeResize` and
+     `useIframe` already were). Both changed only APIs not yet released.
+   - A 0.x release with everything since 0.2.0 (`useIframeTitle`, `useIframeInert`,
+     `child/lite`, `testing`, `devtools`, the accessibility warnings), for real-world
+     use before the API is frozen. The version-skew job then also tests it against
+     0.2.0.
+   - Settle the [thresholds](#open-questions) (open question 3) against that use.
+   - Freeze for v1: the public API, wire protocol v1 and the registry's `/v1` shape
+     (both already cross-version contracts, see [Versioning](#versioning) and
+     [Package layout](#package-layout)).

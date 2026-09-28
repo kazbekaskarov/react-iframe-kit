@@ -18,6 +18,7 @@ export type { CallOptions } from './core/remote';
 export { withOptions } from './core/remote';
 export type { TrustedHTMLLike } from './core/srcdoc';
 export { transfer } from './core/transfer';
+export type { IframeConnectionOptions } from './react/connectionOptions';
 export type { FrameContextValue } from './react/context';
 export { useFrame } from './react/context';
 export type { FrameProps } from './react/Frame';

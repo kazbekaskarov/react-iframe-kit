@@ -2,14 +2,12 @@ import { useRef } from 'react';
 import type { AnySide, SideShape } from '../core/contract';
 import { acquireParentConnection } from '../core/parentConnection';
 import { RpcEngine } from '../core/rpc';
+import type { IframeConnectionOptions } from './connectionOptions';
 import { type IframeTarget, useIframeTarget } from './useIframeTarget';
 import { useIsomorphicLayoutEffect } from './useIsomorphicLayoutEffect';
 
-export interface UseIframeEventOptions {
-  /** Same meaning as in `useIframeRPC`; shares its connection. */
-  origin?: string | undefined;
-  unsafeAllowAnyOrigin?: boolean | undefined;
-}
+/** The iframe's connection options, shared with the other hooks on it. */
+export interface UseIframeEventOptions extends IframeConnectionOptions {}
 
 /**
  * Runs `handler` for every `name` event the iframe emits. The latest handler is
@@ -37,10 +35,10 @@ export function useIframeEvent<
 
   useIsomorphicLayoutEffect(() => {
     if (!iframe) return;
-    const { origin, unsafeAllowAnyOrigin } = latest.current.options;
+    const { origin, unsafeAllowAnyOrigin, debug } = latest.current.options;
     let connection: ReturnType<typeof acquireParentConnection>;
     try {
-      connection = acquireParentConnection(iframe, { origin, unsafeAllowAnyOrigin });
+      connection = acquireParentConnection(iframe, { origin, unsafeAllowAnyOrigin, debug });
     } catch (error) {
       console.error(error);
       return;

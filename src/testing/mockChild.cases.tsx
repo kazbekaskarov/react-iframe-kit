@@ -188,6 +188,27 @@ export function mockChildCases(): void {
       expect(() => mockChild(document.createElement('iframe'))).toThrow(/in the document/);
     });
 
+    it('turns debug on from any hook, not only useIframeRPC', async () => {
+      const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+      function ResizeOnly() {
+        const [iframe, setIframe] = useState<HTMLIFrameElement | null>(null);
+        const title = useIframeTitle(iframe);
+        useIframeResize(iframe, { debug: true });
+        return <iframe ref={setIframe} title={title ?? 'none'} src={SRC} />;
+      }
+      render(<ResizeOnly />);
+      const child = mockChild(iframeElement());
+      await child.whenConnected();
+      await waitFor(() =>
+        expect(debug).toHaveBeenCalledWith(
+          expect.stringMatching(/^react-iframe-kit ← ready/),
+          expect.anything(),
+        ),
+      );
+      expect(iframeElement().title).toBe('none'); // useIframeTitle: null before a title
+      child.dispose();
+    });
+
     it('sees useIframeInert, which also owns the iframe’s inert attribute', async () => {
       function InertHost({ inert }: { inert: boolean }) {
         const [iframe, setIframe] = useState<HTMLIFrameElement | null>(null);

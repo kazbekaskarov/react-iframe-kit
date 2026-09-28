@@ -1,14 +1,12 @@
 import { useRef } from 'react';
 import { makeDocumentInert } from '../core/inert';
 import { acquireParentConnection, type ParentConnection } from '../core/parentConnection';
+import type { IframeConnectionOptions } from './connectionOptions';
 import { type IframeTarget, useIframeTarget } from './useIframeTarget';
 import { useIsomorphicLayoutEffect } from './useIsomorphicLayoutEffect';
 
-export interface UseIframeInertOptions {
-  /** Same meaning as in `useIframeRPC`; shares its connection. */
-  origin?: string | undefined;
-  unsafeAllowAnyOrigin?: boolean | undefined;
-}
+/** The iframe's connection options, shared with the other hooks on it. */
+export interface UseIframeInertOptions extends IframeConnectionOptions {}
 
 /**
  * While `inert` is true, nothing inside the iframe can be clicked, focused or typed
@@ -37,9 +35,9 @@ export function useIframeInert(
   const connection = useRef<ParentConnection | null>(null);
   useIsomorphicLayoutEffect(() => {
     if (!iframe) return;
-    const { origin, unsafeAllowAnyOrigin } = optionsRef.current;
+    const { origin, unsafeAllowAnyOrigin, debug } = optionsRef.current;
     try {
-      connection.current = acquireParentConnection(iframe, { origin, unsafeAllowAnyOrigin });
+      connection.current = acquireParentConnection(iframe, { origin, unsafeAllowAnyOrigin, debug });
     } catch (error) {
       console.error(error);
       return;

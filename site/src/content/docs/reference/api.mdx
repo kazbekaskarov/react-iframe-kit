@@ -15,7 +15,7 @@ For the page that owns the `<iframe>`.
 | `useIframeResize` | `(target, options?) => { width, height } \| null` | [Resize](/react-iframe-kit/guides/resize/) |
 | `useIframeRPC` | `<Remote, Local>(target, options?) => { remote, emit, status, error }` | [RPC](/react-iframe-kit/guides/rpc/) |
 | `useIframeEvent` | `<Remote, Name>(target, name, handler, options?) => void` | [RPC](/react-iframe-kit/guides/rpc/) |
-| `useIframeTitle` | `(target, { origin? }?) => string \| undefined` | [RPC](/react-iframe-kit/guides/rpc/#the-iframes-title) |
+| `useIframeTitle` | `(target, { origin? }?) => string \| null` | [RPC](/react-iframe-kit/guides/rpc/#the-iframes-title) |
 | `useIframeInert` | `(target, inert, { origin? }?) => void` | [Accessibility](/react-iframe-kit/guides/accessibility/#disabling-an-iframe) |
 | `withOptions` | `(remote.method, { signal?, timeout? }) => sameSignature` | [RPC](/react-iframe-kit/guides/rpc/) |
 | `transfer` | `(value, transferables) => value` | [RPC](/react-iframe-kit/guides/rpc/) |
@@ -25,6 +25,11 @@ For the page that owns the `<iframe>`.
 commit of the component that calls the hook. If the `<iframe>` is rendered by another
 component that re-renders on its own, pass the element instead, e.g. from state set by a
 callback ref.
+
+Every hook that talks to the iframe (`useIframeResize`, `useIframeRPC`, `useIframeEvent`,
+`useIframeTitle`, `useIframeInert`) shares one connection per iframe, and takes the same
+connection options (`IframeConnectionOptions`): `origin`, `unsafeAllowAnyOrigin` and
+`debug`. `debug` is on for the iframe as soon as any hook on it asks.
 
 ### `useIframeRPC` options
 

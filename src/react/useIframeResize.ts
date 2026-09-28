@@ -4,12 +4,13 @@ import { createLoopGuard, type LoopGuard } from '../core/loopGuard';
 import type { MeasureFn, Measurement, Size } from '../core/measure';
 import { observeSize } from '../core/observeSize';
 import { acquireParentConnection } from '../core/parentConnection';
+import type { IframeConnectionOptions } from './connectionOptions';
 import { type IframeTarget, useIframeTarget } from './useIframeTarget';
 import { useIsomorphicLayoutEffect } from './useIsomorphicLayoutEffect';
 
 export type ResizeAxis = 'height' | 'width' | 'both';
 
-export interface UseIframeResizeOptions extends SizeLimits {
+export interface UseIframeResizeOptions extends SizeLimits, IframeConnectionOptions {
   /** Which dimensions follow the content. Default `'height'`. */
   axis?: ResizeAxis | undefined;
   /** `false`: only report sizes, don't touch the iframe's styles. Default `true`. */
@@ -24,13 +25,6 @@ export interface UseIframeResizeOptions extends SizeLimits {
   onResizeLoop?: (() => void) | undefined;
   /** Replaces the built-in measurement for unusual layouts. Same-origin mode only. */
   measure?: MeasureFn | undefined;
-  /**
-   * Expected origin of a cross-origin iframe, or to share a connection with
-   * `useIframeRPC` on the same iframe. Optional even cross-origin: derived from the
-   * iframe's `src` otherwise. See docs/design.md → Security.
-   */
-  origin?: string | undefined;
-  unsafeAllowAnyOrigin?: boolean | undefined;
 }
 
 const axesOf = (axis: ResizeAxis) => ({
@@ -96,6 +90,7 @@ export function useIframeResize(
       connection = acquireParentConnection(iframe, {
         origin: optionsRef.current.origin,
         unsafeAllowAnyOrigin: optionsRef.current.unsafeAllowAnyOrigin,
+        debug: optionsRef.current.debug,
       });
     } catch (error) {
       console.error(error);
