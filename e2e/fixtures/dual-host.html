@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>react-iframe-kit e2e: two library copies, parent</title>
+    <!-- Served with a Trusted Types CSP (e2e/vite.config.ts). -->
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module">
+      import cjs from 'kit-cjs';
+      import * as esm from 'kit-esm';
+      import { CHILD_ORIGIN } from '../origins';
+      import { renderHost } from './dual-host';
+
+      renderHost(esm, cjs, `${CHILD_ORIGIN}/dual-child.html`);
+    </script>
+  </body>
+</html>

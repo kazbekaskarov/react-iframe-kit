@@ -1,14 +1,18 @@
 import { fileURLToPath } from 'node:url';
 import react from '@vitejs/plugin-react';
-import { defineConfig } from 'vite';
-import { TRUSTED_TYPES_CSP } from './trusted-types-csp';
+import { defineConfig, normalizePath } from 'vite';
+import { DUAL_HOST_CSP, TRUSTED_TYPES_CSP } from './trusted-types-csp';
 
 const src = (path: string) => fileURLToPath(new URL(`../src/${path}`, import.meta.url));
 // A published build unpacked by `pnpm skew:fetch`, for e2e/skew.spec.ts.
 const published = (path: string) =>
   fileURLToPath(new URL(`./.published/package/${path}`, import.meta.url));
+// The current build (`pnpm build`), for e2e/dual.spec.ts.
+const dist = (path: string) => fileURLToPath(new URL(`../dist/${path}`, import.meta.url));
+const distDir = normalizePath(dist(''));
 
-// Serves e2e/fixtures against the library sources, so e2e runs don't need a build.
+// Serves e2e/fixtures against the library sources, so e2e runs don't need a build
+// (except e2e/dual.spec.ts, which loads the built ESM and CJS copies).
 export default defineConfig({
   root: fileURLToPath(new URL('./fixtures', import.meta.url)),
   plugins: [
@@ -28,8 +32,43 @@ export default defineConfig({
             const policy = TRUSTED_TYPES_CSP[name];
             if (policy) res.setHeader('Content-Security-Policy', policy);
           }
+          if (req.url?.startsWith('/dual-host.html')) {
+            res.setHeader('Content-Security-Policy', DUAL_HOST_CSP);
+          }
           next();
         });
+      },
+    },
+    {
+      // Serves the CJS build as an ES module, so a page can load it next to the ESM
+      // build the way a bundler would (e2e/dual.spec.ts): each `require` becomes an
+      // import of the module's `module.exports`, which is the default export.
+      name: 'cjs-build-as-esm',
+      transform(code, id) {
+        const file = id.split('?')[0] ?? id;
+        if (!file.startsWith(distDir) || !file.endsWith('.cjs')) return;
+        const specifiers = [
+          ...new Set(Array.from(code.matchAll(/\brequire\("([^"]+)"\)/g), (match) => match[1])),
+        ];
+        const imports = specifiers.map(
+          (specifier, i) => `import __cjs${i} from ${JSON.stringify(specifier)};`,
+        );
+        const table = specifiers.map((specifier, i) => `${JSON.stringify(specifier)}: __cjs${i}`);
+        return {
+          code: [
+            ...imports,
+            'const module = { exports: {} };',
+            'const exports = module.exports;',
+            `const modules = { ${table.join(', ')} };`,
+            'const require = (id) => {',
+            `  if (!(id in modules)) throw new Error('cjs-build-as-esm: no shim for ' + id);`,
+            '  return modules[id];',
+            '};',
+            code,
+            'export default module.exports;',
+          ].join('\n'),
+          map: null,
+        };
       },
     },
   ],
@@ -41,6 +80,10 @@ export default defineConfig({
       { find: /^react-iframe-kit$/, replacement: src('index.ts') },
       { find: /^published-kit\/child$/, replacement: published('dist/child/index.js') },
       { find: /^published-kit$/, replacement: published('dist/index.js') },
+      { find: /^kit-esm\/child$/, replacement: dist('child/index.js') },
+      { find: /^kit-esm$/, replacement: dist('index.js') },
+      { find: /^kit-cjs\/child$/, replacement: dist('child/index.cjs') },
+      { find: /^kit-cjs$/, replacement: dist('index.cjs') },
     ],
     // The published build imports `react` from its own location; one copy only.
     dedupe: ['react', 'react-dom'],
