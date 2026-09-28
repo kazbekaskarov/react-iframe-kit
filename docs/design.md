@@ -858,7 +858,14 @@ An abort rejects with `signal.reason` (a standard `AbortError`), not with an
 Messages from an unexpected origin are not errors: they are dropped (logged with
 `debug`), and the dev warning for a stalled handshake mentions them.
 
-`debug: true` logs all protocol traffic to the console.
+`debug: true` logs all protocol traffic to the console (`src/core/debugLog.ts`), each
+message as a `console.debug` object. In the development build the line starts with a
+summary: the type plus what identifies it (`call getUser #q9x7c1`, `event pinged`,
+`size 320×480`, `result #q9x7c1 error RIK_TIMEOUT: …`, where `#…` is the call id's
+random tail). A result also names the call it answers and its round-trip time, on
+the caller's side, or the method's run time, on the side that ran it:
+`(getUser, 12 ms)`. The production build logs the bare message, which keeps the
+summaries out of its size budget.
 
 ## Testing
 

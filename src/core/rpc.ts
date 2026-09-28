@@ -39,6 +39,9 @@ export interface RpcHandle {
 
 interface PendingCall {
   user: object;
+  /** For `debug` logging: which call a result answers, and its round-trip time. */
+  method: string;
+  sentAt: number;
   resolve: (value: unknown) => void;
   reject: (error: unknown) => void;
   timer: ReturnType<typeof setTimeout> | undefined;
@@ -73,6 +76,16 @@ function reportUnhandled(error: unknown): void {
   // non-browser test runners); console.error is the fallback.
   if (typeof reportError === 'function') reportError(error);
   else console.error(error);
+}
+
+/**
+ * `debug` detail for a result: the method it answers and how long since `start`.
+ * Dev-only, like the summary it's appended to (see `logProtocolMessage`).
+ */
+function timing(method: string, start: number): string | undefined {
+  /* v8 ignore next: __DEV__ is compile-time and `true` in tests. */
+  if (!__DEV__) return undefined;
+  return `${method}, ${Math.round(performance.now() - start)} ms`;
 }
 
 function timeoutError(phase: 'connect' | 'response', ms: number): IframeKitError {
@@ -212,13 +225,13 @@ export class RpcEngine {
 
   handleCall(message: CallMessage): void {
     logProtocolMessage(this.debug, '←', message);
-    void this.runLocalMethod(message);
+    void this.runLocalMethod(message, performance.now());
   }
 
-  private async runLocalMethod(message: CallMessage): Promise<void> {
+  private async runLocalMethod(message: CallMessage, start: number): Promise<void> {
     const fn = this.methods.get(message.method);
     if (!fn) {
-      this.sendResult(message.id, {
+      this.sendResult(message, start, {
         ok: false,
         error: {
           name: 'IframeKitError',
@@ -230,52 +243,64 @@ export class RpcEngine {
     }
     try {
       const value = await fn.apply(undefined, message.args);
-      this.sendResult(message.id, { ok: true, value });
+      this.sendResult(message, start, { ok: true, value });
     } catch (error) {
-      this.sendResult(message.id, { ok: false, error: serializeError(error, this.debug) });
+      this.sendResult(message, start, { ok: false, error: serializeError(error, this.debug) });
     }
   }
 
   private sendResult(
-    id: string,
+    call: CallMessage,
+    start: number,
     outcome: { ok: true; value: unknown } | { ok: false; error: SerializedError },
   ): void {
     if (!this.send) return; // the connection dropped while the method was running
+    const { id } = call;
+    const detail = this.debug ? timing(call.method, start) : undefined;
     if (outcome.ok) {
       const { value, transferables } = extractTransferables(outcome.value);
       try {
-        this.sendRaw({ rik: RIK, type: 'result', id, ok: true, value }, transferables);
+        this.sendRaw({ rik: RIK, type: 'result', id, ok: true, value }, transferables, detail);
         return;
       } catch {
         // Falls through: the return value itself couldn't be cloned.
       }
-      this.sendRaw({
-        rik: RIK,
-        type: 'result',
-        id,
-        ok: false,
-        error: {
-          name: 'IframeKitError',
-          message: 'the return value could not be cloned',
-          code: 'RIK_DATA_CLONE',
+      this.sendRaw(
+        {
+          rik: RIK,
+          type: 'result',
+          id,
+          ok: false,
+          error: {
+            name: 'IframeKitError',
+            message: 'the return value could not be cloned',
+            code: 'RIK_DATA_CLONE',
+          },
         },
-      });
+        [],
+        detail,
+      );
       return;
     }
     try {
-      this.sendRaw({ rik: RIK, type: 'result', id, ok: false, error: outcome.error });
+      this.sendRaw({ rik: RIK, type: 'result', id, ok: false, error: outcome.error }, [], detail);
     } catch {
       // The error's own `data` was the part that couldn't be cloned; drop it and retry
       // with just name/message/code, which are always plain strings/numbers.
       const minimal: SerializedError = { name: outcome.error.name, message: outcome.error.message };
       if (outcome.error.code !== undefined) minimal.code = outcome.error.code;
-      this.sendRaw({ rik: RIK, type: 'result', id, ok: false, error: minimal });
+      this.sendRaw({ rik: RIK, type: 'result', id, ok: false, error: minimal }, [], detail);
     }
   }
 
   handleResult(message: ResultMessage): void {
-    logProtocolMessage(this.debug, '←', message);
     const entry = this.pending.get(message.id);
+    logProtocolMessage(
+      this.debug,
+      '←',
+      message,
+      entry && this.debug ? timing(entry.method, entry.sentAt) : undefined,
+    );
     if (!entry) return; // unknown id: a stale/duplicate result, or already settled locally (e.g. abort)
     this.pending.delete(message.id);
     clearTimeout(entry.timer);
@@ -395,6 +420,8 @@ export class RpcEngine {
     const { value: clonableArgs, transferables } = extractTransferables(args);
     const entry: PendingCall = {
       user,
+      method,
+      sentAt: performance.now(),
       resolve,
       reject,
       timer: undefined,
@@ -463,13 +490,14 @@ export class RpcEngine {
   private sendRaw(
     message: CallMessage | ResultMessage | EventMessage,
     transferables: Transferable[] = [],
+    detail?: string,
   ): void {
     /* v8 ignore start: every call site already checks `this.send` (directly, or via
      * `connected()` having just set it) before reaching here; this guard only exists
      * so TypeScript can narrow `this.send` from `Send | null` to `Send`. */
     if (!this.send) return;
     /* v8 ignore stop */
-    logProtocolMessage(this.debug, '→', message);
+    logProtocolMessage(this.debug, '→', message, detail);
     this.send(message, transferables);
   }
 }

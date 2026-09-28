@@ -563,7 +563,7 @@ describe('rpc', () => {
     debug.mockClear();
     emit('ping');
     expect(debug).toHaveBeenCalledWith(
-      'react-iframe-kit →',
+      'react-iframe-kit → event ping',
       expect.objectContaining({ type: 'event', name: 'ping' }),
     );
   });
@@ -629,7 +629,7 @@ describe('lazy RPC engine', () => {
     emit('late');
     await waitFor(() => received.some((m) => m['type'] === 'event'));
     expect(debug).toHaveBeenCalledWith(
-      'react-iframe-kit →',
+      'react-iframe-kit → event late',
       expect.objectContaining({ name: 'late' }),
     );
   });
