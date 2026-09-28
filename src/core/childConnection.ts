@@ -8,6 +8,7 @@ import type { AnySide, Emit, LocalMethods, On, Remote, SideShape } from './contr
 import { logProtocolMessage } from './debugLog';
 import { IframeKitError } from './errors';
 import { randomId } from './id';
+import { makeDocumentInert } from './inert';
 import { createLoopGuard, type LoopGuard } from './loopGuard';
 import type { MeasureFn, Measurement } from './measure';
 import { observeSize } from './observeSize';
@@ -100,6 +101,9 @@ class ChildConnectionImpl {
   private stopTitleObserver: (() => void) | undefined;
   /** What the current session last got; `undefined` makes the next flush send. */
   private sentTitle: string | undefined;
+
+  /** Set while the parent asks this page to be inert; undoes it. */
+  private undoInert: (() => void) | undefined;
 
   constructor() {
     this.instance = getInstance();
@@ -253,6 +257,7 @@ class ChildConnectionImpl {
       // A replaced session: calls sent over the old port can no longer be answered.
       this.port.close();
       this.rpc.disconnected();
+      this.setInert(false); // the new session says again if it wants it
     }
 
     this.session = message.session;
@@ -282,7 +287,12 @@ class ChildConnectionImpl {
         this.port?.close();
         this.port = undefined;
         this.rpc.disconnected();
+        this.setInert(false);
         this.setStatus('connecting');
+        break;
+      case 'inert':
+        logProtocolMessage(this.debug, '←', message);
+        this.setInert(message.inert);
         break;
       case 'call':
         this.rpc.handleCall(message);
@@ -315,8 +325,18 @@ class ChildConnectionImpl {
       this.port = undefined;
       this.rpc.disconnected();
     }
+    this.setInert(false);
     this.setStatus('connecting');
   };
+
+  private setInert(inert: boolean): void {
+    if (inert) {
+      this.undoInert ??= makeDocumentInert(document);
+    } else {
+      this.undoInert?.();
+      this.undoInert = undefined;
+    }
+  }
 
   private handlePageShow = (event: PageTransitionEvent): void => {
     if (event.persisted) this.sendSyn();

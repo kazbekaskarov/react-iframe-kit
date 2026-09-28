@@ -45,6 +45,7 @@ Pass the parent's side first, like `connectToParent`. The iframe must be in the 
 | `on(name, handler)` | Listens to the parent's events; returns the unsubscribe function. |
 | `resize({ width, height })` | Reports a content size, as `autoResize` would. |
 | `setTitle(title)` | Reports a page title, as `syncTitle` would. |
+| `inert` | Whether the parent currently asks the page to be inert (`useIframeInert`). |
 | `whenConnected()` | Resolves once the handshake completes. |
 | `dispose()` | Unloads the page: calls still pending on the parent reject with `RIK_CONNECTION_LOST`. |
 | `status` | `'connecting'`, `'connected'` or `'disposed'`. |

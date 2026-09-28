@@ -238,6 +238,15 @@ describe('parsePortMessage', () => {
     });
   });
 
+  it('parses inert, and rejects a non-boolean one', () => {
+    expect(parsePortMessage({ rik: 1, type: 'inert', inert: true })).toEqual({
+      rik: 1,
+      type: 'inert',
+      inert: true,
+    });
+    expect(parsePortMessage({ rik: 1, type: 'inert', inert: 'yes' })).toBeNull();
+  });
+
   it('parses title', () => {
     expect(parsePortMessage({ rik: 1, type: 'title', title: 'Checkout', extra: 1 })).toEqual({
       rik: 1,

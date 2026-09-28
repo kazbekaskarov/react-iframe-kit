@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>react-iframe-kit e2e: useIframeInert child</title>
+  </head>
+  <body style="margin: 0">
+    <input id="inner" aria-label="inner" />
+    <button id="button" type="button">button</button>
+    <output id="clicks">0</output>
+    <script type="module">
+      import { connectToParent } from 'react-iframe-kit/child';
+
+      const handle = connectToParent({ allowedOrigins: [/^http:\/\/127\.0\.0\.1:\d+$/] });
+      handle.whenConnected().then(() => (document.body.dataset.connected = 'true'));
+      document.getElementById('button').addEventListener('click', () => {
+        const out = document.getElementById('clicks');
+        out.textContent = String(Number(out.textContent) + 1);
+      });
+    </script>
+  </body>
+</html>

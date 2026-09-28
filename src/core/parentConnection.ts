@@ -49,6 +49,11 @@ export interface ParentConnection {
    */
   onTitle(callback: (title: string | undefined) => void): () => void;
   /**
+   * Adds or removes `user`'s request for the child to make itself inert. The child is
+   * told whether any request is left, now and on every new session.
+   */
+  setInert(user: object, inert: boolean): void;
+  /**
    * `Engine` is passed in rather than imported so that resize-only users don't bundle
    * RPC: the connection creates its engine on the first RPC acquire.
    */
@@ -66,6 +71,7 @@ class ParentConnectionImpl implements ParentConnection {
   status: ConnectionStatus = 'connecting';
   cachedSize: CachedSize | undefined;
   private cachedTitle: string | undefined;
+  private inertUsers = new Set<object>();
 
   private refCount = 0;
   private disposeTimer: ReturnType<typeof setTimeout> | undefined;
@@ -146,6 +152,21 @@ class ParentConnectionImpl implements ParentConnection {
     this.titleListeners.add(callback);
     if (this.cachedTitle !== undefined) callback(this.cachedTitle);
     return () => this.titleListeners.delete(callback);
+  }
+
+  setInert(user: object, inert: boolean): void {
+    const before = this.inertUsers.size > 0;
+    if (inert) this.inertUsers.add(user);
+    else this.inertUsers.delete(user);
+    if (this.inertUsers.size > 0 !== before) this.sendInert();
+  }
+
+  /** Tells a connected child the current state; a new session starts from "not inert". */
+  private sendInert(): void {
+    if (!this.connectedPort) return;
+    const message = { rik: RIK, type: 'inert', inert: this.inertUsers.size > 0 } as const;
+    this.connectedPort.postMessage(message);
+    logProtocolMessage(this.debug, '→', message);
   }
 
   private setTitle(title: string | undefined): void {
@@ -261,9 +282,9 @@ class ParentConnectionImpl implements ParentConnection {
     const message = parsePortMessage(event.data);
     if (!message) return;
 
-    // A switch, not if/else if: TypeScript proves this covers all of PortMessage's 7
-    // members, and unlike an if-chain a switch with no default has no "else" branch
-    // for a coverage tool to flag as unreachable. `call`/`result`/`event` are logged
+    // A switch, not if/else if: unlike an if-chain, a switch with no default has no
+    // "else" branch for a coverage tool to flag as unreachable. `inert` only travels
+    // parent → child, so it falls through untouched. `call`/`result`/`event` are logged
     // by `RpcEngine` itself (it's reused standalone and logs its own traffic); the
     // other four are logged here.
     switch (message.type) {
@@ -275,6 +296,7 @@ class ParentConnectionImpl implements ParentConnection {
         this.status = 'connected';
         this.notifyStatus();
         this.rpc?.connected(portSender(port));
+        if (this.inertUsers.size > 0) this.sendInert();
         break;
       }
       case 'size': {

@@ -19,6 +19,33 @@ For a cross-origin page, the page itself can provide its title:
 An iframe sized to its content reflows and scrolls with the page, which is what zoom and
 keyboard users need. See [Auto-resize → Accessibility](/react-iframe-kit/guides/resize/#accessibility).
 
+## Disabling an iframe
+
+To make an iframe's content unusable for a while, behind a modal or in a read-only
+preview, use `useIframeInert`:
+
+```tsx
+import { useIframeInert } from 'react-iframe-kit';
+
+const [iframe, setIframe] = useState<HTMLIFrameElement | null>(null);
+useIframeInert(iframe, modalOpen);
+
+return <iframe ref={setIframe} title="Editor" src={url} />;
+```
+
+While it's on, nothing inside can be clicked, focused or typed into. The `inert`
+attribute on the `<iframe>` alone isn't enough: in Chromium and Safari, keys still reach
+a field that had focus inside, or one the page focuses itself. So the hook also makes the
+page inside inert:
+
+- **same-origin** (a `<Frame>`, or a same-origin `src`): directly, nothing to add inside;
+- **cross-origin**: the page does it itself, which any page running `connectToParent`
+  does automatically. A page without it only gets the attribute, which is enough in
+  Firefox but not in Chromium and Safari.
+
+The hook owns the iframe's `inert` attribute while it's on, so don't also pass an
+`inert` prop.
+
 ## Iframes in focus-trapped dialogs
 
 A modal keeps keyboard focus inside itself with a focus-trap library. Depending on the

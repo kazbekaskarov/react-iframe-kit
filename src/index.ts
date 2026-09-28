@@ -26,6 +26,8 @@ export type { UseIframeOptions, UseIframeResult } from './react/useIframe';
 export { useIframe } from './react/useIframe';
 export type { UseIframeEventOptions } from './react/useIframeEvent';
 export { useIframeEvent } from './react/useIframeEvent';
+export type { UseIframeInertOptions } from './react/useIframeInert';
+export { useIframeInert } from './react/useIframeInert';
 export type { ResizeAxis, UseIframeResizeOptions } from './react/useIframeResize';
 export { useIframeResize } from './react/useIframeResize';
 export type { RPCStatus, UseIframeRPCOptions, UseIframeRPCResult } from './react/useIframeRPC';

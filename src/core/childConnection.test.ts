@@ -356,6 +356,68 @@ describe('autoResize', () => {
   });
 });
 
+describe('inert', () => {
+  const bodyInert = () => document.body.hasAttribute('inert');
+
+  afterEach(() => {
+    document.body.removeAttribute('inert');
+  });
+
+  it('makes the page inert while the parent asks, and takes focus away', async () => {
+    const input = document.createElement('input');
+    document.body.append(input);
+    input.focus();
+    const { parent } = frame();
+    connectToParent({ allowedOrigins: [location.origin] });
+    const { parentPort } = connect(parent);
+
+    parentPort.postMessage({ rik: 1, type: 'inert', inert: true });
+    await waitFor(bodyInert);
+    expect(document.activeElement).not.toBe(input);
+    parentPort.postMessage({ rik: 1, type: 'inert', inert: true }); // already inert
+    parentPort.postMessage({ rik: 1, type: 'inert', inert: false });
+    await waitFor(() => !bodyInert());
+    input.remove();
+  });
+
+  it('ends with the session: on bye, on pagehide and when replaced', async () => {
+    const { parent } = frame();
+    connectToParent({ allowedOrigins: [location.origin] });
+    const { instance, parentPort } = connect(parent);
+
+    parentPort.postMessage({ rik: 1, type: 'inert', inert: true });
+    await waitFor(bodyInert);
+    parentPort.postMessage({ rik: 1, type: 'bye' });
+    await waitFor(() => !bodyInert());
+
+    let channel = new MessageChannel();
+    ackFromParent(parent, { session: 'session-2', instance, port: channel.port2 });
+    channel.port1.postMessage({ rik: 1, type: 'inert', inert: true });
+    await waitFor(bodyInert);
+    const replaced = channel;
+    channel = new MessageChannel();
+    ackFromParent(parent, { session: 'session-3', instance, port: channel.port2 });
+    expect(bodyInert()).toBe(false);
+    replaced.port1.close();
+
+    channel.port1.postMessage({ rik: 1, type: 'inert', inert: true });
+    await waitFor(bodyInert);
+    window.dispatchEvent(new Event('pagehide'));
+    expect(bodyInert()).toBe(false);
+  });
+
+  it("keeps the page's own inert body inert", async () => {
+    document.body.setAttribute('inert', '');
+    const { parent } = frame();
+    connectToParent({ allowedOrigins: [location.origin] });
+    const { parentPort } = connect(parent);
+    parentPort.postMessage({ rik: 1, type: 'inert', inert: true });
+    parentPort.postMessage({ rik: 1, type: 'inert', inert: false });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(bodyInert()).toBe(true);
+  });
+});
+
 describe('syncTitle', () => {
   function collectTitles(parentPort: MessagePort): string[] {
     const titles: string[] = [];
