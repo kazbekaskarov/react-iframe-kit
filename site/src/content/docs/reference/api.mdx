@@ -92,6 +92,20 @@ For your tests, in jsdom or happy-dom. No React needed.
 `MockParent`: `status`, `remote`, `emit(name, payload?)`, `on(name, handler) => off`,
 `size`, `title`, `whenConnected()`, `dispose()`.
 
+## `react-iframe-kit/devtools`
+
+For development, on either page. No React needed.
+
+| Export | Signature |
+|---|---|
+| `onProtocolMessage` | `(listener: ({ direction, message, detail? }) => void) => off` |
+| `connectReduxDevTools` | `({ name?, maxAge? }?) => stop`: sends every message to the Redux DevTools extension |
+| `summarizeProtocolMessage` | `(message) => string`, e.g. `call getUser #q9x7c1` |
+
+`direction` is `'→'` for a message this page sent and `'←'` for one it received. `detail`
+(which call a result answers, and how long it took) is only filled in by development
+builds with `debug: true`.
+
 ## Contract types
 
 | Type | |

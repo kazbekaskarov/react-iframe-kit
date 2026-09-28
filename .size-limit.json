@@ -72,5 +72,12 @@
     "path": "dist/child-lite.global.js",
     "limit": "4.25 kB",
     "gzip": true
+  },
+  {
+    "name": "devtools entry (onProtocolMessage, connectReduxDevTools)",
+    "path": "dist/devtools/index.js",
+    "import": "*",
+    "limit": "1 kB",
+    "gzip": true
   }
 ]

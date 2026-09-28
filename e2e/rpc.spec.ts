@@ -43,6 +43,38 @@ test('the child page title reaches useIframeTitle, and follows changes', async (
   await expect(page.getByTestId('child-title')).toHaveText('Renamed child');
 });
 
+test('connectReduxDevTools sends the real traffic to the extension', async ({ page }) => {
+  await page.addInitScript(() => {
+    const actions: string[] = [];
+    Object.assign(window, {
+      devtoolsActions: actions,
+      __REDUX_DEVTOOLS_EXTENSION__: {
+        connect: () => ({
+          init() {},
+          send: (action: { type: string }) => actions.push(action.type),
+        }),
+      },
+    });
+  });
+  await page.reload();
+  await expect(page.getByTestId('status')).toHaveText('connected');
+  await page.getByRole('button', { name: 'add' }).click();
+  await expect(page.getByTestId('result')).toHaveText('5');
+
+  const actions = await page.evaluate(
+    () => (window as unknown as { devtoolsActions: string[] }).devtoolsActions,
+  );
+  expect(actions).toEqual(
+    expect.arrayContaining([
+      '← syn',
+      '→ ack',
+      '← ready',
+      expect.stringMatching(/^→ call add #\w{6}$/),
+      expect.stringMatching(/^← result #\w{6} ok$/),
+    ]),
+  );
+});
+
 test('events flow both ways', async ({ page }) => {
   const child = page.frameLocator('iframe[title="frame"]');
   await page.getByRole('button', { name: 'dark' }).click();

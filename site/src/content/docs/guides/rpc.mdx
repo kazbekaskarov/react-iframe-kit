@@ -150,6 +150,16 @@ methods are merged, and registering one name twice is `RIK_METHOD_CONFLICT`.
 - **Debugging:** `debug: true` on any hook or `connectToParent` logs every protocol message.
   In development each line starts with a summary, and a result names the call it answers
   and how long it took: `react-iframe-kit ← result #q9x7c1 ok (getUser, 12 ms)`.
+- **Redux DevTools:** with the [browser extension](https://github.com/reduxjs/redux-devtools)
+  installed, `connectReduxDevTools()` from `react-iframe-kit/devtools` shows every message
+  on the page as an action you can search, filter and inspect, whether or not `debug` is
+  on. For your own tooling, `onProtocolMessage(listener)` gives you the same stream.
+
+  ```ts
+  import { connectReduxDevTools } from 'react-iframe-kit/devtools';
+
+  if (import.meta.env.DEV) connectReduxDevTools();
+  ```
 
 ## The iframe's title
 

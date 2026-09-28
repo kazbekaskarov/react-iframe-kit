@@ -20,7 +20,24 @@ export interface Registry {
    * document needs a new field. See core/srcdoc.ts.
    */
   srcdocPolicies?: WeakMap<object, unknown>;
+  /**
+   * Called with every protocol message any copy sends or receives on this page (see
+   * core/debugLog.ts). The event shape is part of the cross-copy contract.
+   */
+  protocolListeners?: Set<ProtocolListener>;
 }
+
+/** A protocol message as `onProtocolMessage` listeners see it. */
+export interface ProtocolEvent {
+  /** `→` sent by this page, `←` received by it. */
+  direction: '→' | '←';
+  /** The message as it went over the wire (a plain object with `rik` and `type`). */
+  message: { rik: number; type: string };
+  /** What only the logging side knows, e.g. `getUser, 12 ms` on a result. Dev and `debug` only. */
+  detail?: string | undefined;
+}
+
+export type ProtocolListener = (event: ProtocolEvent) => void;
 
 const KEY: unique symbol = Symbol.for('react-iframe-kit/v1');
 

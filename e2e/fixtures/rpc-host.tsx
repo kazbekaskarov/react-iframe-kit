@@ -5,6 +5,7 @@
 import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { RemoteError, useIframeEvent, useIframeRPC, useIframeTitle } from 'react-iframe-kit';
+import { connectReduxDevTools } from 'react-iframe-kit/devtools';
 import { CHILD_ORIGIN } from '../origins';
 import type { ChildSide, ParentSide } from './rpc-contract';
 
@@ -56,6 +57,9 @@ function Host() {
     </>
   );
 }
+
+// A no-op unless the spec installed a fake Redux DevTools extension first.
+connectReduxDevTools({ name: 'rpc-host' });
 
 const root = document.getElementById('root');
 if (!root) throw new Error('#root is missing');
