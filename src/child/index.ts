@@ -1,8 +1,9 @@
 // Child entry: `react-iframe-kit/child`. Must not depend on React.
 // See docs/design.md → Package layout.
 
-export type { ChildStatus, ConnectToParentOptions, ParentHandle } from '../core/childConnection';
-export { connectToParent } from '../core/childConnection';
+export type { ChildStatus } from '../core/childConnection';
+export type { ConnectToParentOptions, ParentHandle } from '../core/connectToParent';
+export { connectToParent } from '../core/connectToParent';
 export type {
   AnySide,
   Contract,

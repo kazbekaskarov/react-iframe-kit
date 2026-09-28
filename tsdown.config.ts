@@ -5,6 +5,7 @@ import { defineConfig, type UserConfig } from 'tsdown';
 const entry = {
   index: 'src/index.ts',
   'child/index': 'src/child/index.ts',
+  'child/lite': 'src/child/lite.ts',
   'child/react': 'src/child/react.ts',
   'testing/index': 'src/testing/index.ts',
 };
@@ -40,9 +41,15 @@ export default defineConfig([
     dts: false,
     define: { __DEV__: 'true' },
   },
-  // `<script>` build of the child entry for pages without a bundler.
-  {
-    entry: { 'child.global': 'src/child/index.ts' },
+  // `<script>` builds of the child entries for pages without a bundler. One config per
+  // entry: an IIFE can't share chunks between entries.
+  iife('child.global', 'src/child/index.ts'),
+  iife('child-lite.global', 'src/child/lite.ts'),
+]);
+
+function iife(name: string, source: string): UserConfig {
+  return {
+    entry: { [name]: source },
     format: 'iife',
     globalName: 'ReactIframeKit',
     platform: 'browser',
@@ -55,5 +62,5 @@ export default defineConfig([
     minify: true,
     sourcemap: true,
     define: { __DEV__: 'false' },
-  },
-]);
+  };
+}

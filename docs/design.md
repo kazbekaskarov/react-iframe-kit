@@ -49,12 +49,22 @@ One npm package, subpath exports:
 |---|---|---|---|
 | `react-iframe-kit` | parent | yes | `<Frame>`, `useFrame`, `useIframe`, `useIframeResize`, `useIframeRPC`, `useIframeEvent`, `useIframeTitle`, `useIframeInert`, `transfer`, `withOptions`, errors, types |
 | `react-iframe-kit/child` | iframe | no | `connectToParent`, `transfer`, `withOptions`, errors, types |
+| `react-iframe-kit/child/lite` | iframe | no | `connectToParent` without RPC and events (`autoResize`, `syncTitle`, inert), `IframeKitError`, `isIframeKitError`, types |
 | `react-iframe-kit/child/react` | iframe | yes | `useParent`, `useParentEvent` |
 | `react-iframe-kit/testing` | tests (jsdom, happy-dom) | no | `mockChild`, `mockParent`, see [Testing utilities](#testing-utilities) |
 
 The `child` entry also ships as an IIFE build (`dist/child.global.js`, global
 `ReactIframeKit`) for embedded pages that don't use a bundler (served via
-jsDelivr/unpkg).
+jsDelivr/unpkg), and so does `child/lite` (`dist/child-lite.global.js`, same global).
+
+`child/lite` is for embedded pages that only need to be sized, titled and made inert:
+its `connectToParent` has the same options minus `methods`/`timeout`/
+`connectTimeout`, and a handle without `remote`/`emit`/`on`. It shares the page's one
+connection with the full `connectToParent`, so both can be used on a page (e.g. a
+lite `<script>` plus a React island with `useParent`); the RPC engine is created by
+the first full caller, connected at once if the handshake is already done. On a page
+with no engine, an incoming `call` is answered with `RIK_METHOD_NOT_FOUND`, as on a
+parent without one, so the parent's call fails fast instead of timing out.
 
 Internally, `src/core/` is framework-agnostic (protocol, handshake, RPC, events,
 size measurement). React code in `src/react/` only adapts core to hooks. This keeps
@@ -100,9 +110,11 @@ Size budgets (min+gzip, React excluded, enforced by size-limit per import scenar
 | `<Frame>` (portal + resize + copyStyles) | ≤ 6.75 kB | 6.5 kB |
 | `useIframeRPC` + `useIframeEvent` | ≤ 6.5 kB | 6.13 kB |
 | entire parent entry | ≤ 10.5 kB | 10.1 kB |
-| `child` entry (`connectToParent` with RPC + `autoResize` + `syncTitle` + inert) | ≤ 6.25 kB | 6.23 kB |
-| `child/react` entry (`useParent`, `useParentEvent`) | ≤ 7.25 kB | 7.09 kB |
-| `child` IIFE | ≤ 6.25 kB | 6.21 kB |
+| `child` entry (`connectToParent` with RPC + `autoResize` + `syncTitle` + inert) | ≤ 6.5 kB | 6.28 kB |
+| `child/lite` entry (the same without RPC and events) | ≤ 4.25 kB | 4.13 kB |
+| `child/react` entry (`useParent`, `useParentEvent`) | ≤ 7.25 kB | 7.16 kB |
+| `child` IIFE | ≤ 6.5 kB | 6.28 kB |
+| `child/lite` IIFE | ≤ 4.25 kB | 4.12 kB |
 
 `<Frame>` is the batteries-included component; size-sensitive users build on
 `useIframe`. Module-level calls such as `forwardRef(...)` must be marked
@@ -128,7 +140,15 @@ budgets were raised from 6 kB to 6.25 kB.
 to the shared parent connection, which every hook pulls in. `<Frame>` crossed its
 budget by a few bytes and the whole parent entry (which now also has the hook) by
 0.1 kB, so the budgets for `<Frame>`, the parent entry and `child/react` were raised to
-6.75, 10.5 and 7.25 kB. The `child` entry and IIFE are now within 0.05 kB of theirs.
+6.75, 10.5 and 7.25 kB.
+That left the `child` entry and IIFE within 0.05 kB of their budgets, and every child
+feature paying for RPC. So the child connection no longer imports the engine either:
+`connectToParent` (now in `src/core/connectToParent.ts`, the only child module that
+imports `rpc.ts`) passes it in, as the parent hooks do, and `child/lite` never does.
+A page that only resizes now ships 4.13 kB instead of 6.28. The split itself cost the
+full entry 0.05 kB (the engine-less `call` answer, the lazy engine), which took it
+over 6.25 kB; its budget and the IIFE's were raised to 6.5 kB, and `child/lite` got a
+tight 4.25 kB of its own.
 
 ## Two modes
 

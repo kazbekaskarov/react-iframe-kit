@@ -9,7 +9,13 @@
 import { logProtocolMessage } from './debugLog';
 import { IframeKitError, RemoteError, type SerializedError, serializeError } from './errors';
 import { randomId } from './id';
-import { type CallMessage, type EventMessage, type ResultMessage, RIK } from './protocol';
+import {
+  type CallMessage,
+  type EventMessage,
+  methodNotFound,
+  type ResultMessage,
+  RIK,
+} from './protocol';
 import { type CallOptions, createRemote, type RemoteCaller, type RemoteMethod } from './remote';
 import { extractTransferables } from './transfer';
 
@@ -235,14 +241,7 @@ export class RpcEngine {
   private async runLocalMethod(message: CallMessage, start: number): Promise<void> {
     const fn = this.methods.get(message.method);
     if (!fn) {
-      this.sendResult(message, start, {
-        ok: false,
-        error: {
-          name: 'IframeKitError',
-          message: `no method named "${message.method}"`,
-          code: 'RIK_METHOD_NOT_FOUND',
-        },
-      });
+      this.sendResult(message, start, { ok: false, error: methodNotFound(message.method) });
       return;
     }
     try {

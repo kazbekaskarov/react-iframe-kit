@@ -76,6 +76,7 @@ export default defineConfig({
   resolve: {
     alias: [
       { find: /^react-iframe-kit\/child\/react$/, replacement: src('child/react.ts') },
+      { find: /^react-iframe-kit\/child\/lite$/, replacement: src('child/lite.ts') },
       { find: /^react-iframe-kit\/child$/, replacement: src('child/index.ts') },
       { find: /^react-iframe-kit$/, replacement: src('index.ts') },
       { find: /^published-kit\/child$/, replacement: published('dist/child/index.js') },

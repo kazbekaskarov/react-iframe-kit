@@ -8,7 +8,7 @@ import {
   type ConnectToParentOptions,
   connectToParent,
   type ParentHandle,
-} from '../core/childConnection';
+} from '../core/connectToParent';
 import type { Side } from '../core/contract';
 import { mockParent } from './mockParent';
 

@@ -2,14 +2,13 @@
 // events API.
 
 import { useRef, useState } from 'react';
+import { type ChildStatus, onParentStatusChange } from '../core/childConnection';
 import {
-  type ChildStatus,
   type ConnectToParentOptions,
   connectToParent,
   onParentEvent,
-  onParentStatusChange,
   type ParentHandle,
-} from '../core/childConnection';
+} from '../core/connectToParent';
 import type { AnySide, Emit, Remote, SideShape } from '../core/contract';
 import { DeferredRpc } from '../core/deferredRpc';
 import type { IframeKitError } from '../core/errors';
