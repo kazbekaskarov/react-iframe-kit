@@ -16,6 +16,11 @@ describe('connectToParent on the server', () => {
     ).not.toThrow();
   });
 
+  it('syncTitle is a no-op, and so is disposing it', () => {
+    const handle = connectToParent({ allowedOrigins: ['https://example.com'], syncTitle: true });
+    expect(() => handle.dispose()).not.toThrow();
+  });
+
   it('dispose is a no-op', () => {
     const handle = connectToParent({ allowedOrigins: ['https://example.com'] });
     expect(() => handle.dispose()).not.toThrow();

@@ -30,6 +30,12 @@ export interface ConnectToParentOptions<LocalSide extends SideShape = AnySide> {
   debug?: boolean | undefined;
   /** Report this page's content size to the parent. See docs/design.md → Resize. */
   autoResize?: boolean | { measure?: MeasureFn | undefined } | undefined;
+  /**
+   * Send this page's `document.title` to the parent, now and whenever it changes, for
+   * `useIframeTitle`. Opt-in: a title can hold private data. See docs/design.md →
+   * Title.
+   */
+  syncTitle?: boolean | undefined;
   /** Methods this page exposes to the parent. See docs/design.md → RPC and events API. */
   methods?: LocalMethods<LocalSide> | undefined;
   /** Per call, from send to result. Default 10 s; `Infinity` is allowed. */
@@ -90,6 +96,11 @@ class ChildConnectionImpl {
   };
   private lastSent: { width: number; height: number; loop: boolean } | undefined;
 
+  private titleUsers = 0;
+  private stopTitleObserver: (() => void) | undefined;
+  /** What the current session last got; `undefined` makes the next flush send. */
+  private sentTitle: string | undefined;
+
   constructor() {
     this.instance = getInstance();
     if (typeof window === 'undefined' || !isFramed()) return; // SSR, or opened top-level
@@ -114,6 +125,7 @@ class ChildConnectionImpl {
     window.removeEventListener('pageshow', this.handlePageShow);
     this.port?.close();
     this.stopObserving?.();
+    this.stopTitleObserver?.();
   }
   /* v8 ignore stop */
 
@@ -175,6 +187,27 @@ class ChildConnectionImpl {
     this.loopGuards = { width: createLoopGuard(), height: createLoopGuard() };
   }
 
+  startTitleSync(): void {
+    if (typeof document === 'undefined') return;
+    if (this.titleUsers++ > 0) return;
+    // The title is the text of `<title>` in `<head>`: a new element, or new text in it.
+    const observer = new MutationObserver(this.flushTitle);
+    observer.observe(document.head, {
+      childList: true,
+      characterData: true,
+      subtree: true,
+    });
+    this.stopTitleObserver = () => observer.disconnect();
+    this.flushTitle();
+  }
+
+  stopTitleSync(): void {
+    if (this.titleUsers === 0 || --this.titleUsers > 0) return;
+    this.stopTitleObserver?.();
+    this.stopTitleObserver = undefined;
+    this.sentTitle = undefined;
+  }
+
   private sendSyn(): void {
     const message = {
       rik: RIK,
@@ -234,6 +267,8 @@ class ChildConnectionImpl {
     // No `logProtocolMessage` in the sender: `RpcEngine` logs what it sends.
     this.rpc.connected((rpcMessage, transferables) => port.postMessage(rpcMessage, transferables));
     this.flushSize();
+    this.sentTitle = undefined; // a new session hasn't got it yet
+    this.flushTitle();
   };
 
   private handlePortMessage = (event: MessageEvent): void => {
@@ -332,6 +367,16 @@ class ChildConnectionImpl {
     this.port.postMessage(message);
     logProtocolMessage(this.debug, '→', message);
   }
+
+  private flushTitle = (): void => {
+    if (this.titleUsers === 0 || this.status !== 'connected' || !this.port) return;
+    const title = document.title.trim();
+    if (title === this.sentTitle) return;
+    this.sentTitle = title;
+    const message = { rik: RIK, type: 'title', title } as const;
+    this.port.postMessage(message);
+    logProtocolMessage(this.debug, '→', message);
+  };
 }
 
 function getConnection(): ChildConnectionImpl {
@@ -385,6 +430,8 @@ export function connectToParent<
     }
   }
 
+  if (options.syncTitle) connection.startTitleSync();
+
   let disposed = false;
   const waiters = new Set<() => void>();
   const destroyed = () =>
@@ -421,6 +468,7 @@ export function connectToParent<
       waiters.clear();
       rpc.release();
       if (options.autoResize) connection.stopAutoResize();
+      if (options.syncTitle) connection.stopTitleSync();
       connection.release();
     },
   };

@@ -44,6 +44,12 @@ export interface SizeMessage extends Envelope {
   loop?: boolean | undefined;
 }
 
+/** Child → parent, with `syncTitle`: the child document's (trimmed) `document.title`. */
+export interface TitleMessage extends Envelope {
+  type: 'title';
+  title: string;
+}
+
 export interface ByeMessage extends Envelope {
   type: 'bye';
 }
@@ -80,6 +86,7 @@ export interface EventMessage extends Envelope {
 export type PortMessage =
   | ReadyMessage
   | SizeMessage
+  | TitleMessage
   | ByeMessage
   | CallMessage
   | ResultMessage
@@ -153,6 +160,10 @@ export function parsePortMessage(data: unknown): PortMessage | null {
       height: d['height'],
       loop: d['loop'] as boolean | undefined,
     };
+  }
+
+  if (d['type'] === 'title') {
+    return typeof d['title'] === 'string' ? { rik: RIK, type: 'title', title: d['title'] } : null;
   }
 
   if (d['type'] === 'call') {

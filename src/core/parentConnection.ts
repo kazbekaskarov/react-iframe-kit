@@ -44,6 +44,11 @@ export interface ParentConnection {
   /** Fires immediately with the cached size if there is one, then on every new report. */
   onSize(callback: (size: CachedSize) => void): () => void;
   /**
+   * Fires immediately with the child's title if there is one, then on every new
+   * report, and with `undefined` when the session it came from ends.
+   */
+  onTitle(callback: (title: string | undefined) => void): () => void;
+  /**
    * `Engine` is passed in rather than imported so that resize-only users don't bundle
    * RPC: the connection creates its engine on the first RPC acquire.
    */
@@ -60,6 +65,7 @@ function connectionsMap(): WeakMap<HTMLIFrameElement, ParentConnectionImpl> {
 class ParentConnectionImpl implements ParentConnection {
   status: ConnectionStatus = 'connecting';
   cachedSize: CachedSize | undefined;
+  private cachedTitle: string | undefined;
 
   private refCount = 0;
   private disposeTimer: ReturnType<typeof setTimeout> | undefined;
@@ -75,6 +81,7 @@ class ParentConnectionImpl implements ParentConnection {
 
   private statusListeners = new Set<(status: ConnectionStatus) => void>();
   private sizeListeners = new Set<(size: CachedSize) => void>();
+  private titleListeners = new Set<(title: string | undefined) => void>();
 
   constructor(private readonly iframe: HTMLIFrameElement) {
     window.addEventListener('message', this.handleWindowMessage);
@@ -135,6 +142,18 @@ class ParentConnectionImpl implements ParentConnection {
     return () => this.sizeListeners.delete(callback);
   }
 
+  onTitle(callback: (title: string | undefined) => void): () => void {
+    this.titleListeners.add(callback);
+    if (this.cachedTitle !== undefined) callback(this.cachedTitle);
+    return () => this.titleListeners.delete(callback);
+  }
+
+  private setTitle(title: string | undefined): void {
+    if (title === this.cachedTitle) return;
+    this.cachedTitle = title;
+    for (const listener of this.titleListeners) listener(title);
+  }
+
   private expectedOrigin(): string {
     return this.explicitOrigin ?? deriveExpectedOrigin(this.iframe);
   }
@@ -157,6 +176,8 @@ class ParentConnectionImpl implements ParentConnection {
   /** Resets to `'connecting'` without sending a syn (a reply/ack is coming instead). */
   private resetToConnecting(): void {
     this.cachedSize = undefined;
+    // A reloaded or replaced page may not sync its title, so the old one would be wrong.
+    this.setTitle(undefined);
     if (this.status !== 'connecting') {
       this.status = 'connecting';
       this.notifyStatus();
@@ -240,11 +261,11 @@ class ParentConnectionImpl implements ParentConnection {
     const message = parsePortMessage(event.data);
     if (!message) return;
 
-    // A switch, not if/else if: TypeScript proves this covers all of PortMessage's 6
+    // A switch, not if/else if: TypeScript proves this covers all of PortMessage's 7
     // members, and unlike an if-chain a switch with no default has no "else" branch
     // for a coverage tool to flag as unreachable. `call`/`result`/`event` are logged
     // by `RpcEngine` itself (it's reused standalone and logs its own traffic); the
-    // other three are logged here.
+    // other four are logged here.
     switch (message.type) {
       case 'ready': {
         if (port !== this.pendingPort) return; // a duplicate ready for an already-connected session
@@ -267,6 +288,10 @@ class ParentConnectionImpl implements ParentConnection {
         for (const listener of this.sizeListeners) listener(size);
         break;
       }
+      case 'title':
+        logProtocolMessage(this.debug, '←', message);
+        this.setTitle(message.title);
+        break;
       case 'bye':
         logProtocolMessage(this.debug, '←', message);
         this.teardownPort(false);

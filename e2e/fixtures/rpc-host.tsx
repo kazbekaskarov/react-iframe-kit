@@ -4,7 +4,7 @@
 // See e2e/rpc.spec.ts.
 import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { RemoteError, useIframeEvent, useIframeRPC } from 'react-iframe-kit';
+import { RemoteError, useIframeEvent, useIframeRPC, useIframeTitle } from 'react-iframe-kit';
 import { CHILD_ORIGIN } from '../origins';
 import type { ChildSide, ParentSide } from './rpc-contract';
 
@@ -23,6 +23,8 @@ function Host() {
   useIframeEvent<ChildSide, 'submitted'>(iframe, 'submitted', (payload) =>
     setSubmitted(payload.id),
   );
+  // Shown rather than set as the iframe's `title`, which the spec locates it by.
+  const childTitle = useIframeTitle(iframe);
 
   useEffect(() => {
     remote.echo('early').then(setEarly, (error: unknown) => setEarly(String(error)));
@@ -40,6 +42,7 @@ function Host() {
       <output data-testid="early">{early}</output>
       <output data-testid="result">{result}</output>
       <output data-testid="submitted">{submitted}</output>
+      <output data-testid="child-title">{childTitle ?? 'none'}</output>
       <button type="button" onClick={() => remote.add(2, 3).then((sum) => setResult(String(sum)))}>
         add
       </button>

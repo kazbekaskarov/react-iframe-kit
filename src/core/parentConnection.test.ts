@@ -381,6 +381,56 @@ describe('size', () => {
   });
 });
 
+describe('title', () => {
+  it('notifies listeners of each new title, once per change', async () => {
+    const { iframe, child } = createIframe();
+    const connection = acquireParentConnection(iframe, {});
+    const port = await connect(connection, child, 'i1', location.origin);
+    const titles: Array<string | undefined> = [];
+    const off = connection.onTitle((title) => titles.push(title));
+    expect(titles).toEqual([]); // nothing cached yet
+
+    port.postMessage({ rik: 1, type: 'title', title: 'Checkout' });
+    port.postMessage({ rik: 1, type: 'title', title: 'Checkout' });
+    port.postMessage({ rik: 1, type: 'title', title: 'Payment' });
+    await waitFor(() => titles.length === 2);
+    expect(titles).toEqual(['Checkout', 'Payment']);
+
+    off();
+    port.postMessage({ rik: 1, type: 'title', title: 'Done' });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(titles).toEqual(['Checkout', 'Payment']);
+  });
+
+  it('onTitle fires immediately with the cached title', async () => {
+    const { iframe, child } = createIframe();
+    const connection = acquireParentConnection(iframe, {});
+    const port = await connect(connection, child, 'i1', location.origin);
+    const first: Array<string | undefined> = [];
+    connection.onTitle((title) => first.push(title));
+    port.postMessage({ rik: 1, type: 'title', title: 'Checkout' });
+    await waitFor(() => first.length === 1);
+
+    const later: Array<string | undefined> = [];
+    connection.onTitle((title) => later.push(title));
+    expect(later).toEqual(['Checkout']);
+  });
+
+  it('forgets the title when the session ends', async () => {
+    const { iframe, child } = createIframe();
+    const connection = acquireParentConnection(iframe, {});
+    const port = await connect(connection, child, 'i1', location.origin);
+    const titles: Array<string | undefined> = [];
+    connection.onTitle((title) => titles.push(title));
+    port.postMessage({ rik: 1, type: 'title', title: 'Checkout' });
+    await waitFor(() => titles.length === 1);
+
+    port.postMessage({ rik: 1, type: 'bye' });
+    await waitFor(() => titles.length === 2);
+    expect(titles).toEqual(['Checkout', undefined]);
+  });
+});
+
 describe('bye', () => {
   it('moves back to connecting, clears the cached size, and resends syn', async () => {
     const { iframe, child } = createIframe();

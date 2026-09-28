@@ -150,3 +150,23 @@ methods are merged, and registering one name twice is `RIK_METHOD_CONFLICT`.
 - **Debugging:** `debug: true` on any hook or `connectToParent` logs every protocol message.
   In development each line starts with a summary, and a result names the call it answers
   and how long it took: `react-iframe-kit ← result #q9x7c1 ok (getUser, 12 ms)`.
+
+## The iframe's title
+
+Screen readers announce an iframe by its `title`. The page inside knows what it shows
+best, so it can send its `document.title`, and the parent passes it on:
+
+```ts
+// the page inside the iframe
+connectToParent({ allowedOrigins: ['https://app.example.com'], syncTitle: true });
+```
+
+```tsx
+// the parent
+const title = useIframeTitle(iframe);
+return <iframe ref={setIframe} title={title ?? 'Checkout'} src={url} />;
+```
+
+The page opts in because a title can hold private data. `useIframeTitle` follows every
+change, and returns `undefined` until the title arrives, when it's empty, and after the
+page unloads: keep a fallback.

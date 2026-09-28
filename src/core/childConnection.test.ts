@@ -356,6 +356,84 @@ describe('autoResize', () => {
   });
 });
 
+describe('syncTitle', () => {
+  function collectTitles(parentPort: MessagePort): string[] {
+    const titles: string[] = [];
+    parentPort.onmessage = (e) => {
+      if (e.data?.type === 'title') titles.push(e.data.title);
+    };
+    parentPort.start?.();
+    return titles;
+  }
+
+  afterEach(() => {
+    document.title = '';
+  });
+
+  it('sends nothing without the option', async () => {
+    document.title = 'Private inbox';
+    const { parent } = frame();
+    connectToParent({ allowedOrigins: [location.origin] });
+    const { parentPort } = connect(parent);
+    const messages: unknown[] = [];
+    parentPort.onmessage = (e) => messages.push(e.data);
+    parentPort.start?.();
+    document.title = 'Still private';
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(messages.filter((m) => (m as { type: string }).type === 'title')).toEqual([]);
+  });
+
+  it('sends the trimmed title once connected, then each change', async () => {
+    document.title = '  Checkout  ';
+    const { parent } = frame();
+    connectToParent({ allowedOrigins: [location.origin], syncTitle: true });
+    const titles = collectTitles(connect(parent).parentPort);
+    await waitFor(() => titles.length === 1);
+    expect(titles).toEqual(['Checkout']);
+
+    document.title = 'Payment';
+    await waitFor(() => titles.length === 2);
+    expect(titles).toEqual(['Checkout', 'Payment']);
+  });
+
+  it('sends an unchanged title only once per session, and again to a new session', async () => {
+    document.title = 'Checkout';
+    const { parent } = frame();
+    const first = connectToParent({ allowedOrigins: [location.origin], syncTitle: true });
+    connectToParent({ allowedOrigins: [location.origin], syncTitle: true }); // shares the observer
+    const { instance, parentPort } = connect(parent);
+    const titles = collectTitles(parentPort);
+    document.title = ' Checkout '; // a mutation, but the same trimmed title
+    await waitFor(() => titles.length === 1);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(titles).toEqual(['Checkout']);
+
+    const channel = new MessageChannel();
+    ackFromParent(parent, { session: 'session-2', instance, port: channel.port2 });
+    const again = collectTitles(channel.port1);
+    await waitFor(() => again.length === 1);
+    expect(again).toEqual(['Checkout']);
+
+    first.dispose(); // the other caller still syncs
+    document.title = 'Payment';
+    await waitFor(() => again.length === 2);
+  });
+
+  it('stops once every syncTitle caller disposes', async () => {
+    document.title = 'Checkout';
+    const { parent } = frame();
+    const handle = connectToParent({ allowedOrigins: [location.origin], syncTitle: true });
+    const titles = collectTitles(connect(parent).parentPort);
+    await waitFor(() => titles.length === 1);
+
+    handle.dispose();
+    handle.dispose(); // idempotent: doesn't stop a sync it no longer holds
+    document.title = 'Payment';
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(titles).toEqual(['Checkout']);
+  });
+});
+
 describe('dispose', () => {
   it('is idempotent', () => {
     const { parent: _parent } = frame();
