@@ -9,7 +9,8 @@
       "react-iframe-kit": ["../src/index.ts"],
       "react-iframe-kit/child": ["../src/child/index.ts"],
       "react-iframe-kit/child/react": ["../src/child/react.ts"],
-      "react-iframe-kit/child/lite": ["../src/child/lite.ts"]
+      "react-iframe-kit/child/lite": ["../src/child/lite.ts"],
+      "react-iframe-kit/devtools": ["../src/devtools/index.ts"]
     }
   }
 }
