@@ -40,9 +40,9 @@ export interface MockParent<
   /** Subscribes to one of the page's events; returns the unsubscribe function. */
   on: On<RemoteSide>;
   /** The last size the page reported with `autoResize`, if any. */
-  readonly size: { width: number; height: number } | undefined;
+  readonly size: { width: number; height: number } | null;
   /** The last title the page reported with `syncTitle`, if any. */
-  readonly title: string | undefined;
+  readonly title: string | null;
   /** Resolves once the handshake with the page completes. */
   whenConnected(): Promise<void>;
   /**
@@ -92,8 +92,8 @@ export function mockParent<
   let status: MockParentStatus = 'connecting';
   let instance: string | undefined;
   let port: MessagePort | undefined;
-  let size: { width: number; height: number } | undefined;
-  let title: string | undefined;
+  let size: { width: number; height: number } | null = null;
+  let title: string | null = null;
   const connectedWaiters = new Set<{ resolve: () => void; reject: (error: unknown) => void }>();
   const destroyed = () =>
     new IframeKitError('RIK_DESTROYED', 'react-iframe-kit/testing: the mock parent was disposed.');

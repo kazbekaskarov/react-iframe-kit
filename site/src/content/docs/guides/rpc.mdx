@@ -178,5 +178,5 @@ return <iframe ref={setIframe} title={title ?? 'Checkout'} src={url} />;
 ```
 
 The page opts in because a title can hold private data. `useIframeTitle` follows every
-change, and returns `undefined` until the title arrives, when it's empty, and after the
+change, and returns `null` until the title arrives, when it's empty, and after the
 page unloads: keep a fallback.

@@ -83,8 +83,8 @@ connects:** it makes the test page look framed, and a connection started before 
 | `remote` | The page's methods. |
 | `emit(name, payload?)` | Sends one of the parent's events to the page. |
 | `on(name, handler)` | Listens to the page's events; returns the unsubscribe function. |
-| `size` | The last size the page reported with `autoResize`, or `undefined`. |
-| `title` | The last title the page reported with `syncTitle`, or `undefined`. |
+| `size` | The last size the page reported with `autoResize`, or `null`. |
+| `title` | The last title the page reported with `syncTitle`, or `null`. |
 | `whenConnected()` | Resolves once the handshake completes. |
 | `dispose()` | Goes away like an unmounting parent: the page's pending calls reject with `RIK_CONNECTION_LOST`, and the page is no longer framed. |
 | `status` | `'connecting'`, `'connected'` or `'disposed'`. |

@@ -5,26 +5,20 @@ import type { IframeKitError } from '../core/errors';
 import { latestMethods } from '../core/latestMethods';
 import { acquireParentConnection, type ParentConnection } from '../core/parentConnection';
 import { DEFAULT_CONNECT_TIMEOUT, RpcEngine, type RpcHandle } from '../core/rpc';
+import type { IframeConnectionOptions } from './connectionOptions';
 import { type IframeTarget, useIframeTarget } from './useIframeTarget';
 import { useIsomorphicLayoutEffect } from './useIsomorphicLayoutEffect';
 
 export type RPCStatus = 'idle' | 'connecting' | 'connected' | 'error';
 
-export interface UseIframeRPCOptions<Local extends SideShape = AnySide> {
-  /**
-   * Expected origin of the iframe. Optional: derived from the iframe's `src`
-   * otherwise. See docs/design.md → Security.
-   */
-  origin?: string | undefined;
-  unsafeAllowAnyOrigin?: boolean | undefined;
+export interface UseIframeRPCOptions<Local extends SideShape = AnySide>
+  extends IframeConnectionOptions {
   /** Methods the iframe may call. The latest ones are always used. */
   methods?: LocalMethods<Local> | undefined;
   /** Per call, from send to result. Default 10 s; `Infinity` is allowed. */
   timeout?: number | undefined;
   /** How long a call may wait for the connection. Default 30 s; `Infinity` is allowed. */
   connectTimeout?: number | undefined;
-  /** Logs all protocol traffic to the console. */
-  debug?: boolean | undefined;
 }
 
 export interface UseIframeRPCResult<RemoteSide extends SideShape, LocalSide extends SideShape> {
