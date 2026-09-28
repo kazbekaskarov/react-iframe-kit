@@ -233,6 +233,14 @@ return (
 - With `resize`, the resized axis is owned by the library. A `height`/`width` in
   `style` is used only as the size before the first measurement, and a dev warning
   says so.
+- Dev warnings for accessibility, after axe-core's `frame-title`,
+  `frame-title-unique` and `frame-focusable-content` rules (`src/core/a11y.ts`):
+  a missing or generic `title` (`iframe`, `frame`, `untitled`, a URL or file name),
+  the same `title` as another mounted `<Frame>` (compared trimmed and
+  case-insensitively), and a negative `tabIndex`, which keeps keyboard users out of
+  the rendered content. They run in an effect, so server rendering and StrictMode's
+  extra render don't trigger them, and each fires once per `<Frame>`. `useIframe`
+  doesn't check: its users render the `<iframe>` themselves.
 
 `FrameContext` → `useFrame(): { window, document }`. This is required by CSS-in-JS
 libraries (emotion `CacheProvider`, styled-components `StyleSheetManager target`)
@@ -865,7 +873,8 @@ Messages from an unexpected origin are not errors: they are dropped (logged with
   really be an error). Enforced at 100% statement/branch/function/line
   on `src/core` (`vitest.config.ts`); a handful of provably-unreachable branches
   (`__DEV__` guards under the test build's `define`, and one exhaustive union match)
-  are marked with `v8 ignore` and explained inline rather than counted.
+  are marked with `v8 ignore` and explained inline rather than counted. `<Frame>`'s
+  dev warnings are tested there too, with Testing Library (`Frame.test.tsx`).
 - **Playwright** (chromium, firefox, webkit): real iframes, including cross-origin via
   two dev-server ports. Covered so far:
   - the #22847 document-replacement regression (`e2e/firefox-22847.spec.ts`);

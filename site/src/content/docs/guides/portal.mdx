@@ -27,6 +27,11 @@ import { Frame } from 'react-iframe-kit';
 | `srcDoc` | A custom document, as a string or a `TrustedHTML` ([Trusted Types](/react-iframe-kit/guides/security/#trusted-types)). Keep it stable: changing it reloads the iframe. |
 | anything else | Forwarded to the `<iframe>`. `ref` points at the iframe element. |
 
+Screen readers announce an iframe by its `title`, so give every `<Frame>` one that
+describes its content. In development, `<Frame>` warns about a missing or generic
+`title` (`"iframe"`, a URL), a `title` another mounted `<Frame>` already has, and a
+negative `tabIndex`, which keeps keyboard users out of the content.
+
 Inside a `<Frame>`, `useFrame()` returns the iframe's `window` and `document`. CSS-in-JS
 and positioning libraries need those:
 
