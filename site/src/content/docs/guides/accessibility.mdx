@@ -1,0 +1,86 @@
+---
+title: Accessibility
+description: Accessible names, reflow, and keyboard access to iframes inside focus-trapped dialogs.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## A name for every iframe
+
+Screen readers announce an iframe by its `title`. Give every one a title that describes
+its content, e.g. `title="Order summary"`. In development, `<Frame>` warns about a missing
+or generic title, one that another `<Frame>` already has, and a negative `tabIndex`.
+
+For a cross-origin page, the page itself can provide its title:
+[`useIframeTitle`](/react-iframe-kit/guides/rpc/#the-iframes-title).
+
+## No scroll box of its own
+
+An iframe sized to its content reflows and scrolls with the page, which is what zoom and
+keyboard users need. See [Auto-resize → Accessibility](/react-iframe-kit/guides/resize/#accessibility).
+
+## Iframes in focus-trapped dialogs
+
+A modal keeps keyboard focus inside itself with a focus-trap library. Depending on the
+library and the browser, the content of an iframe in the dialog can end up **unreachable
+by keyboard**: Tab skips it, or wraps around before getting there. It happens when the
+iframe is the first or the last focusable thing in the dialog.
+
+What we measured, with a cross-origin iframe as the first or the last element of a
+dialog:
+
+| Library | As is | `tabIndex={0}` on the iframe | Focus guards (below) |
+|---|---|---|---|
+| [focus-trap](https://github.com/focus-trap/focus-trap) (and `focus-trap-react`) | ❌ every browser | ✅ Chromium, WebKit · ❌ Firefox | ✅ |
+| [react-focus-lock](https://github.com/theKashey/react-focus-lock) (Chakra UI) | ✅ | ✅ | ✅, with two extra Tab stops |
+| Radix `FocusScope` (Radix Dialog) | ✅ Chromium, WebKit · ❌ Firefox | ✅ Chromium, WebKit · ❌ Firefox | ✅ |
+
+❌ means one or both Tab directions never enter the iframe. Tested with focus-trap 8.2.2,
+react-focus-lock 2.13.7 and @radix-ui/react-focus-scope 1.1.16, in Playwright's Chromium,
+Firefox and WebKit (Playwright 1.63). Other libraries weren't tested: check yours by
+tabbing through the dialog in each browser.
+
+- **focus-trap** decides what is tabbable with a selector that doesn't match `<iframe>`,
+  so it never counts the iframe as a stop. `tabIndex={0}` makes it count, which is enough
+  in Chromium and WebKit.
+- **Firefox**, with focus-trap or Radix, doesn't move focus into the iframe when the
+  library wraps around to it. Only focus guards help there.
+
+### Focus guards
+
+Put a focusable element on each side of the iframe, inside the dialog. The library then
+wraps to the guard instead of the iframe, and the browser's own Tab moves between the
+guard and the iframe's content. Give them text, so a screen reader says where the user is,
+and show them while focused, so sighted keyboard users don't lose focus:
+
+```tsx
+function FocusGuard({ children }: { children: string }) {
+  return (
+    <span tabIndex={0} className="focus-guard">
+      {children}
+    </span>
+  );
+}
+
+<Dialog>
+  <FocusGuard>Start of the embedded form</FocusGuard>
+  <iframe title="Payment" src="https://pay.example.com/form" />
+  <FocusGuard>End of the embedded form</FocusGuard>
+</Dialog>;
+```
+
+```css
+.focus-guard:not(:focus) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+```
+
+<Aside>
+  Guards cost two extra Tab stops. Add them only where the table says your library needs
+  them, not by default: with react-focus-lock they're just noise.
+</Aside>

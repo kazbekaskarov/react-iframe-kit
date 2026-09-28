@@ -756,6 +756,18 @@ const title = useIframeTitle(iframeRef, { origin }); // string | undefined
 - Protocol: `title` is an additive port message (see
   [Versioning](#versioning)): older parents ignore it, older children never send it.
 
+### Focus traps (documented, not implemented)
+
+An iframe inside a focus-trapped dialog can be unreachable by keyboard. Measured with
+Playwright (Chromium, Firefox, WebKit) on a cross-origin iframe as the first or last
+element of the dialog: focus-trap 8.2.2 skips it in every browser (its tabbable
+selector doesn't match `<iframe>`; `tabIndex={0}` fixes Chromium and WebKit), Radix
+`FocusScope` 1.1.16 fails in Firefox in one direction, and react-focus-lock 2.13.7
+works everywhere. Focusable guards on both sides of the iframe fix every case, at the
+cost of two extra Tab stops, which is noise where the library already works. So the
+library doesn't add guards (no `<Frame trapSafe>`); the Accessibility guide on the docs
+site has the table and a guard recipe, to apply only where a library needs it.
+
 ## Security
 
 - **Parent expected origin:**
