@@ -184,7 +184,7 @@
     "test:e2e": "playwright test",
     "skew:fetch": "node scripts/fetch-published.mjs",
     "test:skew": "playwright test e2e/skew.spec.ts",
-    "check:package": "publint --strict && attw --pack . --profile node16",
+    "check:package": "publint --strict && attw --pack . --profile node16 && node scripts/check-prod-build.mjs",
     "size": "size-limit",
     "changeset": "changeset",
     "release": "pnpm build && changeset publish"

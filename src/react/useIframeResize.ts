@@ -68,7 +68,8 @@ export function useIframeResize(
     optionsRef.current = options;
   });
 
-  // Dev warnings already shown by this hook instance.
+  // Dev warnings already shown by this hook instance. Every call site is behind
+  // `__DEV__`, so the production build carries none of their text.
   const warned = useRef(new Set<string>());
 
   // The last content size committed for the current iframe, so that changing the
@@ -133,7 +134,7 @@ export function useIframeResize(
       const axis = optionsRef.current.axis ?? 'height';
       const axes = axesOf(axis);
 
-      if (!optionsRef.current.measure) {
+      if (__DEV__ && !optionsRef.current.measure) {
         if (measurement.overflow) {
           warnOnce(
             'overflow',
@@ -161,7 +162,7 @@ export function useIframeResize(
         height = lastLocalSize?.height ?? measurement.height;
       }
       const tripped = localGuards.width.tripped || localGuards.height.tripped;
-      if (tripped && !wasTripped) {
+      if (__DEV__ && tripped && !wasTripped) {
         warnOnce(
           'loop',
           'the iframe content keeps growing with the iframe (content sized from the viewport, e.g. `100vh` or `100%` plus a margin or padding?). Resizing is paused until the content changes.',
@@ -230,15 +231,17 @@ export function useIframeResize(
     };
     const unsubscribeSize = connection.onSize(onRemoteSize);
 
-    noSizeTimer = setTimeout(() => {
-      noSizeTimer = undefined;
-      if (!everReceivedRemoteSize && currentDoc === null) {
-        warnOnce(
-          'no-size',
-          "no size has arrived from the iframe. If it's cross-origin, enable `autoResize` in `connectToParent` inside it.",
-        );
-      }
-    }, 5_000);
+    if (__DEV__) {
+      noSizeTimer = setTimeout(() => {
+        noSizeTimer = undefined;
+        if (!everReceivedRemoteSize && currentDoc === null) {
+          warnOnce(
+            'no-size',
+            "no size has arrived from the iframe. If it's cross-origin, enable `autoResize` in `connectToParent` inside it.",
+          );
+        }
+      }, 5_000);
+    }
 
     return () => {
       iframe.removeEventListener('load', onLoad);
