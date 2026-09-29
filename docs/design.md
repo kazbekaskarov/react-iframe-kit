@@ -51,6 +51,7 @@ One npm package, subpath exports:
 | `react-iframe-kit/child` | iframe | no | `connectToParent`, `transfer`, `withOptions`, errors, types |
 | `react-iframe-kit/child/lite` | iframe | no | `connectToParent` without RPC and events (`autoResize`, `syncTitle`, inert), `IframeKitError`, `isIframeKitError`, types |
 | `react-iframe-kit/child/react` | iframe | yes | `useParent`, `useParentEvent` |
+| `react-iframe-kit/validate` | either | no | `validateArgs`, `validatePayload`, see [Validation](#validation) |
 | `react-iframe-kit/host` | parent | no | `connectToIframe`, `transfer`, `withOptions`, errors, types, see [Host without React](#host-without-react) |
 | `react-iframe-kit/testing` | tests (jsdom, happy-dom) | no | `mockChild`, `mockParent`, see [Testing utilities](#testing-utilities) |
 | `react-iframe-kit/devtools` | either page, in development | no | `onProtocolMessage`, `connectReduxDevTools`, `summarizeProtocolMessage`, see [Devtools](#devtools) |
@@ -121,6 +122,7 @@ Size budgets (min+gzip, React excluded, enforced by size-limit per import scenar
 | `child/lite` IIFE | ≤ 4.25 kB | 4.16 kB |
 | `host` entry (`connectToIframe`, with RPC) | ≤ 6.25 kB | 5.97 kB |
 | `host` IIFE | ≤ 6.25 kB | 5.99 kB |
+| `validate` entry | ≤ 1 kB | 0.68 kB |
 | `devtools` entry | ≤ 1 kB | 0.72 kB |
 
 The [Devtools](#devtools) listener check in the shared message path costs every entry
@@ -765,6 +767,32 @@ because calls made before the connection exists must already work.
   `useParent`, not in the connection: a same-origin `useIframeResize` never needs
   the handshake, and warning there would be noise.
 
+## Validation
+
+`Side<>` contracts are compile-time only, while everything that crosses the boundary is
+untrusted input from another origin. `react-iframe-kit/validate` checks it at runtime with
+any [Standard Schema](https://standardschema.dev) v1 library (the interface is copied, as
+its spec asks, so there is no dependency):
+
+```ts
+methods: { prefill: validateArgs(z.tuple([Prefill]), (data) => apply(data)) }
+on('orderCompleted', validatePayload(Order, track))
+```
+
+- **Wrappers, not options.** A `validate` option on the hooks and `connectToParent` would
+  have put schema handling in the RPC engine and in every entry's budget (the `child`
+  entry had 0.16 kB left). Wrapping a method or handler costs nothing to those who don't
+  use it, works with every side and entry the same way, and keeps the protocol unchanged.
+- `validateArgs` validates the arguments as a tuple and calls the method with the
+  schema's output (transforms and defaults apply). Invalid arguments throw
+  `RIK_VALIDATION` with `data: { message, path }[]` (paths as strings, so it clones), which
+  the caller receives as a `RemoteError`.
+- `validatePayload` drops an invalid event and reports the error with `reportError`, the
+  same channel as a throwing handler. The handler runs a microtask later than
+  unvalidated ones (schemas may be async).
+- Covered by `src/core/validate.test.ts` and, end to end over the real protocol, in
+  `src/core/connectToIframe.test.ts`.
+
 ## Resize
 
 Parent:
@@ -1079,6 +1107,7 @@ All errors extend `IframeKitError` with a stable `code` and an optional `cause`.
 | `RIK_QUEUE_OVERFLOW` | more than 1,000 messages queued while not connected |
 | `RIK_ORIGIN_CONFLICT` | two users of one iframe passed different origins |
 | `RIK_METHOD_CONFLICT` | two users registered the same method name |
+| `RIK_VALIDATION` | arguments or a payload failed a schema from `react-iframe-kit/validate` (see [Validation](#validation)) |
 | `RIK_INVALID_OPTIONS` | e.g. `'*'` without `unsafeAllowAnyOrigin`, no `allowedOrigins` on the child, `<Frame>` in a sandbox without `allow-same-origin`, a `srcdoc` the host's Trusted Types policy blocks |
 
 ### Error policy

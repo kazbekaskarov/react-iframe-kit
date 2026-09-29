@@ -43,6 +43,18 @@ connection options (`IframeConnectionOptions`): `origin`, `unsafeAllowAnyOrigin`
 | `connectTimeout` | `30_000` | How long to wait for the connection: queued calls reject, and `status` becomes `'timeout'`, after this long; `Infinity` allowed. |
 | `debug` | `false` | Log all protocol traffic. |
 
+## `react-iframe-kit/validate`
+
+Runtime validation for either side, with any Standard Schema library. *Next release.*
+
+| Export | Signature |
+|---|---|
+| `validateArgs` | `(schema, method) => method` — the schema validates the arguments as a tuple; invalid ones reject with `RIK_VALIDATION`. |
+| `validatePayload` | `(schema, handler) => handler` — an invalid payload is reported with `reportError` and not delivered. |
+| `StandardSchemaV1`, `ValidationIssue` | types |
+
+See [Validating what arrives](/react-iframe-kit/guides/rpc/#validating-what-arrives).
+
 ## `react-iframe-kit/host`
 
 The page that owns the `<iframe>`, without React: a widget's loader script, a site that

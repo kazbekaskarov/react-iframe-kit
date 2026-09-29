@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mockChild } from '../testing/mockChild';
 import { connectToIframe, type IframeHandle } from './connectToIframe';
 import type { Side } from './contract';
+import { RemoteError } from './errors';
+import { type StandardSchemaV1, validateArgs } from './validate';
 
 type ParentSide = Side<{
   methods: { getUser(id: number): { name: string } };
@@ -215,5 +217,31 @@ describe('connectToIframe', () => {
     // Nothing held on to the connection: a different origin is not a conflict now.
     const host = connect(iframe, { origin: 'https://other.example' });
     expect(host.status).toBe('connecting');
+  });
+
+  it('answers a call with invalid arguments with RIK_VALIDATION (validateArgs)', async () => {
+    const userId: StandardSchemaV1<unknown, [number]> = {
+      '~standard': {
+        version: 1,
+        vendor: 'test',
+        validate: (value) =>
+          Number.isInteger((value as unknown[])[0])
+            ? { value: value as [number] }
+            : { issues: [{ message: 'expected an integer', path: [0] }] },
+      },
+    };
+    const iframe = frame();
+    connect(iframe, {
+      methods: { getUser: validateArgs(userId, (id) => ({ name: `user ${id}` })) },
+    });
+    const child = mockChild<ParentSide, ChildSide>(iframe);
+    cleanups.push(() => child.dispose());
+    await expect(child.remote.getUser(7)).resolves.toEqual({ name: 'user 7' });
+    const error = await child.remote.getUser(1.5).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(RemoteError);
+    expect((error as RemoteError).cause).toMatchObject({
+      code: 'RIK_VALIDATION',
+      data: [{ message: 'expected an integer', path: ['0'] }],
+    });
   });
 });

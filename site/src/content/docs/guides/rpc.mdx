@@ -172,6 +172,36 @@ methods are merged, and registering one name twice is `RIK_METHOD_CONFLICT`.
   if (import.meta.env.DEV) connectReduxDevTools();
   ```
 
+## Validating what arrives
+
+A contract is only types: nothing checks, at runtime, that the other page sent what it
+says. Across origins that page may be buggy, out of date, or hostile, so validate
+arguments and payloads where it matters. `react-iframe-kit/validate` wraps a method or a
+handler with any [Standard Schema](https://standardschema.dev) library (Zod, Valibot,
+ArkType, …) *(next release)*:
+
+```ts
+import { validateArgs, validatePayload } from 'react-iframe-kit/validate';
+import { z } from 'zod';
+
+const methods = {
+  // The schema checks the arguments as a tuple; the method gets its output.
+  prefill: validateArgs(z.tuple([z.object({ email: z.email(), promo: z.string().max(32) })]),
+    (data) => applyPrefill(data)),
+};
+
+widget.on('orderCompleted', validatePayload(Order, (order) => track(order)));
+```
+
+- **Invalid arguments** reject the call with `RIK_VALIDATION`. The caller gets a
+  `RemoteError` whose `cause.code` is `'RIK_VALIDATION'` and whose `cause.data` lists the
+  issues as `{ message, path }`. The method isn't called.
+- **An invalid payload** isn't delivered; the error goes to `reportError`, where the
+  console and error trackers see it, like an error thrown by a handler.
+- The method or handler receives the schema's *output*, so transforms and defaults apply.
+- The entry is 0.7 kB and imports nothing else from the library; the schema library is
+  yours.
+
 ## The iframe's title
 
 Screen readers announce an iframe by its `title`. The page inside knows what it shows

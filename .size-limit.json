@@ -87,6 +87,13 @@
     "gzip": true
   },
   {
+    "name": "validate entry (validateArgs, validatePayload)",
+    "path": "dist/validate/index.js",
+    "import": "*",
+    "limit": "1 kB",
+    "gzip": true
+  },
+  {
     "name": "devtools entry (onProtocolMessage, connectReduxDevTools)",
     "path": "dist/devtools/index.js",
     "import": "*",

@@ -12,6 +12,7 @@
       "react-iframe-kit/child/lite": ["./src/child/lite.ts"],
       "react-iframe-kit/devtools": ["./src/devtools/index.ts"],
       "react-iframe-kit/host": ["./src/host/index.ts"],
+      "react-iframe-kit/validate": ["./src/validate/index.ts"],
       // The version-skew fixtures' published build is typed as the current API; the
       // spec skips whatever it doesn't actually export.
       "published-kit": ["./src/index.ts"],

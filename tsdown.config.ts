@@ -8,6 +8,7 @@ const entry = {
   'child/lite': 'src/child/lite.ts',
   'child/react': 'src/child/react.ts',
   'host/index': 'src/host/index.ts',
+  'validate/index': 'src/validate/index.ts',
   'devtools/index': 'src/devtools/index.ts',
   'testing/index': 'src/testing/index.ts',
 };

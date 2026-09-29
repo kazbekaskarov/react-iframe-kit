@@ -162,6 +162,7 @@ the same iframe share one handshake.
 | `react-iframe-kit/child/lite` | the page inside, when it only needs resize, title and inert | `connectToParent` without RPC |
 | `react-iframe-kit/child/react` | the page inside, with React | `useParent`, `useParentEvent` |
 | `react-iframe-kit/host` | the page that owns the `<iframe>`, without React | `connectToIframe`: resize, RPC, events, title, inert |
+| `react-iframe-kit/validate` | either side | `validateArgs`, `validatePayload`: runtime checks with Zod, Valibot or any Standard Schema library |
 | `react-iframe-kit/testing` | your tests | `mockChild`, `mockParent` |
 | `react-iframe-kit/devtools` | development | `connectReduxDevTools`, `onProtocolMessage` |
 

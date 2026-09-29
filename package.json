@@ -132,6 +132,26 @@
         "default": "./dist/host/index.cjs"
       }
     },
+    "./validate": {
+      "development": {
+        "import": {
+          "types": "./dist/validate/index.d.ts",
+          "default": "./dist/dev/validate/index.js"
+        },
+        "require": {
+          "types": "./dist/validate/index.d.cts",
+          "default": "./dist/dev/validate/index.cjs"
+        }
+      },
+      "import": {
+        "types": "./dist/validate/index.d.ts",
+        "default": "./dist/validate/index.js"
+      },
+      "require": {
+        "types": "./dist/validate/index.d.cts",
+        "default": "./dist/validate/index.cjs"
+      }
+    },
     "./devtools": {
       "development": {
         "import": {
@@ -190,6 +210,9 @@
       ],
       "host": [
         "./dist/host/index.d.cts"
+      ],
+      "validate": [
+        "./dist/validate/index.d.cts"
       ],
       "testing": [
         "./dist/testing/index.d.cts"

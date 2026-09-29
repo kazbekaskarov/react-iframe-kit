@@ -30,6 +30,7 @@ ESM and a CJS copy). Use `isIframeKitError(value)` if you'd rather avoid `instan
 | `RIK_QUEUE_OVERFLOW` | More than 1,000 calls and events queued while not connected. |
 | `RIK_ORIGIN_CONFLICT` | Two users of the same iframe (or two `connectToParent` callers) passed different origins. |
 | `RIK_METHOD_CONFLICT` | Two users registered the same method name on one connection. |
+| `RIK_VALIDATION` | Arguments or a payload failed a schema from [`react-iframe-kit/validate`](/react-iframe-kit/guides/rpc/#validating-what-arrives); `data` lists the issues. The caller sees it as a `RemoteError` with this `cause.code`. |
 | `RIK_INVALID_OPTIONS` | E.g. `'*'` without `unsafeAllowAnyOrigin`, an empty `allowedOrigins`, `<Frame>` in a sandbox without `allow-same-origin`, an iframe document blocked by the page's [Trusted Types](/react-iframe-kit/guides/security/#trusted-types) policy. |
 
 ## `RemoteError`

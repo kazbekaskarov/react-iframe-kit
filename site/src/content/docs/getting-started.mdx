@@ -7,8 +7,8 @@ import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
 
 <Aside>
   These docs follow the `main` branch. Everything described here is in `0.3.0`, except
-  what's marked *next release*: `react-iframe-kit/host`, `useIframeLoad`,
-  `status: 'timeout'`, predicates in `allowedOrigins`.
+  what's marked *next release*: `react-iframe-kit/host`, `react-iframe-kit/validate`,
+  `useIframeLoad`, `status: 'timeout'`, predicates in `allowedOrigins`.
 </Aside>
 
 ## Install
@@ -28,6 +28,7 @@ React 18 or 19 is a peer dependency. The package has these entry points:
 | `react-iframe-kit/child/lite` | the page inside the iframe, when it needs no RPC | no | `connectToParent` for resize, title and inert only: 4 kB instead of 6 kB |
 | `react-iframe-kit/child/react` | the page inside the iframe | yes | `useParent`, `useParentEvent` |
 | `react-iframe-kit/host` | the page that owns the `<iframe>`, when it isn't a React app | no | `connectToIframe`: resize, RPC, events, title and inert, see [Embedding a widget](/react-iframe-kit/guides/embedding/) |
+| `react-iframe-kit/validate` | either page | no | `validateArgs`, `validatePayload`: runtime checks with any [Standard Schema](https://standardschema.dev) library |
 | `react-iframe-kit/testing` | your tests | no | `mockChild`, `mockParent` |
 | `react-iframe-kit/devtools` | either page, in development | no | `onProtocolMessage`, `connectReduxDevTools`: the protocol traffic in Redux DevTools |
 

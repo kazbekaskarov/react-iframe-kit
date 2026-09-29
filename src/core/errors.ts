@@ -16,7 +16,8 @@ export type ErrorCode =
   | 'RIK_QUEUE_OVERFLOW'
   | 'RIK_ORIGIN_CONFLICT'
   | 'RIK_METHOD_CONFLICT'
-  | 'RIK_INVALID_OPTIONS';
+  | 'RIK_INVALID_OPTIONS'
+  | 'RIK_VALIDATION';
 
 /** Error as it crosses the wire. See docs/design.md → Port messages. */
 export interface SerializedError {
