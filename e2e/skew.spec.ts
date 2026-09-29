@@ -75,3 +75,29 @@ test.describe('published parent with the current child', () => {
     await expectFullPair(page, '/skew-published-parent.html');
   });
 });
+
+test.describe('hand-written host with the published child', () => {
+  test.skip(!version, notFetched);
+  test.skip(
+    !exportsOf('child/index').has('connectToParent'),
+    `react-iframe-kit@${version}'s child entry has no connectToParent: it predates the protocol`,
+  );
+
+  // The docs' protocol page describes v1 as the published widgets speak it, not only
+  // as this branch does. See e2e/manual-host.spec.ts.
+  test('connects, resizes, calls both ways and delivers events', async ({ page }) => {
+    await page.goto('/manual-host.html?child=published');
+    await expect(page.getByTestId('status')).toHaveText('connected');
+
+    const frame = page.frames().find((f) => f.url().includes('skew-published-child.html'));
+    const content = await frame?.evaluate(() =>
+      Math.ceil(document.documentElement.getBoundingClientRect().height),
+    );
+    await expect(page.locator('iframe')).toHaveJSProperty('clientHeight', content);
+
+    await page.getByRole('button', { name: 'add' }).click();
+    await expect(page.getByTestId('result')).toHaveText('5');
+    await expect(page.frameLocator('iframe').locator('#parent-name')).toHaveText('parent');
+    await expect(page.getByTestId('events')).toHaveText('pinged');
+  });
+});

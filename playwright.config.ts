@@ -37,6 +37,7 @@ export default defineConfig({
         'cross-origin-resize.spec.ts',
         'frame.spec.ts',
         'host.spec.ts',
+        'manual-host.spec.ts',
         'resize.spec.ts',
         'rpc.spec.ts',
         'sandboxed-child.spec.ts',

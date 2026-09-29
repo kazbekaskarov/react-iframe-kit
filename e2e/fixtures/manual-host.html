@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>react-iframe-kit e2e: host without the library</title>
+  </head>
+  <body>
+    <output data-testid="status">none</output>
+    <output data-testid="connects">0</output>
+    <output data-testid="result">none</output>
+    <output data-testid="error">none</output>
+    <output data-testid="events">none</output>
+    <button type="button" id="add">add</button>
+    <button type="button" id="missing">missing</button>
+    <button type="button" id="inert">inert</button>
+    <button type="button" id="theme">theme</button>
+    <iframe title="Widget"></iframe>
+    <script type="module" src="./manual-host.js"></script>
+  </body>
+</html>
