@@ -17,10 +17,8 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
 
 <CardGrid>
   <Card title="Portal rendering" icon="document">
-    `<Frame>` and `useIframe` render React children into an iframe, and mount only into the
-    iframe's *final* document. That sidesteps the race behind
-    [facebook/react#22847](https://github.com/facebook/react/issues/22847), where portaled
-    content silently disappears.
+    `<Frame>` and `useIframe` render React children into an iframe, and mount only after
+    the iframe's own document has loaded, not into the temporary `about:blank` before it.
   </Card>
   <Card title="Auto-resize" icon="seti:image">
     `useIframeResize` follows the content's size, same-origin or cross-origin, with a guard

@@ -42,8 +42,8 @@ interface Loaded {
 
 /**
  * Headless primitive behind `<Frame>`: gives a same-origin iframe a standards-mode
- * document and reports it only once it is the final one, so portaled content never
- * lands in a document that is replaced later (facebook/react#22847).
+ * document and reports it only once it has loaded, so portaled content doesn't go into
+ * the temporary document that is replaced on load.
  * See docs/design.md → Portal mode.
  */
 export function useIframe(options: UseIframeOptions = {}): UseIframeResult {

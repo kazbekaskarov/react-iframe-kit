@@ -77,11 +77,9 @@ loaded, and they're updated after every reload.
 ## Why not just portal into `contentDocument`?
 
 When an `<iframe>` is inserted, the browser creates an initial `about:blank` document
-right away. If you portal into it and that document is then replaced, the content
-disappears silently: React keeps rendering into a detached document
-([facebook/react#22847](https://github.com/facebook/react/issues/22847)). This happens in
-Firefox up to 146 (so Firefox ESR 140 too) without any `src`, and in **every** browser as
-soon as the iframe has a `srcdoc`.
+right away. If you portal into it and that document is then replaced, the content can
+disappear without an error: React keeps rendering into a detached document. With a
+`srcdoc`, the initial document is replaced in every browser.
 
 react-iframe-kit gives the iframe a `srcdoc` of its own, which also keeps the document in
 standards mode (`about:blank` is quirks mode). It mounts only after that document's native

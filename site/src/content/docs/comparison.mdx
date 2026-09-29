@@ -29,9 +29,9 @@ of them and already use a good library for it, you may not need this one.
 
 Notes:
 
-1. It portals into the iframe's document. Whether you hit the
-   [#22847](https://github.com/facebook/react/issues/22847) race depends on the browser
-   and on whether you pass `initialContent` (a `srcdoc`); see
+1. It portals into the iframe's current document, which may still be the temporary
+   one, depending on the browser and on whether you pass `initialContent` (a `srcdoc`);
+   see
    [Portal rendering](/react-iframe-kit/guides/portal/#why-not-just-portal-into-contentdocument).
 2. Untyped messages between the two sides, not request/response calls.
 3. Through a separate React package.

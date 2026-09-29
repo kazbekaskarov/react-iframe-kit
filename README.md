@@ -44,9 +44,8 @@ import { Frame } from 'react-iframe-kit';
 </Frame>;
 ```
 
-The content mounts only into the iframe's final, standards-mode document, so it never
-silently disappears when the document is replaced on load
-([facebook/react#22847](https://github.com/facebook/react/issues/22847)).
+The content mounts only after the iframe's own standards-mode document has loaded, and
+remounts after every reload.
 
 ## Size a cross-origin iframe to its content
 

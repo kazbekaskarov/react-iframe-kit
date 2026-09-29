@@ -1,16 +1,16 @@
 import { expect, test } from '@playwright/test';
 
-// facebook/react#22847: content portaled into an iframe is lost when the iframe's
-// document is replaced after React has mounted into it.
+// Content portaled into an iframe is lost when the iframe's document is replaced after
+// React has mounted into it.
 //
 // Findings (2026-09-27, docs/design.md → Portal mode):
 // - Firefox ≤ 146 replaces the initial about:blank of an iframe without `src` on load;
-//   fixed in Firefox 147/148. The Firefox bundled with current Playwright no longer
+//   not seen from Firefox 148. The Firefox bundled with current Playwright no longer
 //   shows it, so these tests force a document replacement with `srcdoc` instead,
 //   which replaces the document in every browser.
 
 async function loadVariant(page: import('@playwright/test').Page, variant: string) {
-  await page.goto(`/firefox-22847.html?variant=${variant}`);
+  await page.goto(`/document-replacement.html?variant=${variant}`);
   await page.waitForFunction(
     () => document.querySelector('iframe')?.contentDocument?.readyState === 'complete',
   );
