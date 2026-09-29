@@ -1089,7 +1089,7 @@ summaries out of its size budget.
   IframeKitError` across copies). It loads `dist/`, so CI builds before the e2e job;
   locally the spec skips, naming the reason, when the build is missing or older than
   `src`.
-- **Version skew** (`e2e/skew.spec.ts`, CI job "Version skew"): the parent from
+- **Version skew** (`e2e/skew.spec.ts`, CI job "Version skew", in all three engines): the parent from
   `main` against the last published `child` build, and vice versa. `pnpm skew:fetch`
   unpacks the latest published build into `e2e/.published`, after checking the
   registry's integrity hash (`SKEW_VERSION` picks another version, `SKEW_TARBALL` a
@@ -1100,7 +1100,14 @@ summaries out of its size budget.
   since it has no protocol; the tests start running with the first release that
   ships one. Against a `pnpm pack` of the current build, both directions pass on all
   three browsers.
-- React 18 and 19 matrix in CI.
+- React 18 and 19 matrix in CI: the unit suite on both, and the e2e suite on React 18
+  in Chromium besides the three engines on 19. The React 18 e2e job found an update
+  loop that the unit job couldn't: `useIframeTarget` scheduled a same-value update
+  after every commit, and with several hooks in one StrictMode component React 18
+  kept rendering (`src/react/useIframeTarget.test.tsx` now reproduces it in happy-dom).
+- A `mobile-webkit` Playwright project (iPhone 15 viewport and touch input) runs the
+  embed paths: handshake, cross-origin resize, calls, reloads, `<Frame>` and the
+  sandboxed child.
 - **Docs site** (`site/`, workflow "Docs"): a Playwright smoke test of the built site
   loads every page with no console errors, drives the live playground, and runs the
   RPC demo both ways.

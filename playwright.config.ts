@@ -27,6 +27,20 @@ export default defineConfig({
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
     { name: 'firefox', use: { ...devices['Desktop Firefox'] } },
     { name: 'webkit', use: { ...devices['Desktop Safari'] } },
+    // iOS Safari's viewport, touch input and scaling, for the embed paths that
+    // matter on phones: the handshake, cross-origin resize, calls and reloads.
+    {
+      name: 'mobile-webkit',
+      use: { ...devices['iPhone 15'] },
+      testMatch: [
+        'child-reload.spec.ts',
+        'cross-origin-resize.spec.ts',
+        'frame.spec.ts',
+        'resize.spec.ts',
+        'rpc.spec.ts',
+        'sandboxed-child.spec.ts',
+      ],
+    },
   ],
   webServer: [server(HOST_PORT), server(CHILD_PORT)],
 });
