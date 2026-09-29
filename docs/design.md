@@ -317,9 +317,12 @@ Every message is a plain object with a marker that doubles as the protocol versi
 
 - Messages without `rik` are ignored silently, so the library coexists with any other
   postMessage traffic.
-- Messages with an unknown `rik` version are ignored with a dev-mode warning.
+- Messages with any other `rik` value are ignored silently too. The handshake
+  envelope is `rik: 1` forever (see [Versioning](#versioning)), so another value can
+  only come from unrelated traffic that happens to use the same key.
 - Every message is shape-validated (own properties, expected primitive types).
-  Malformed messages are dropped and logged when `debug` is on.
+  Malformed messages are dropped silently: `debug` logging and devtools listeners see
+  the messages that parse, which is what the protocol acted on.
 - Unknown `type`s and unknown fields are ignored. This is what keeps additive
   protocol changes backward compatible.
 
@@ -441,6 +444,13 @@ In all cases the connection stays open.
   stays `rik: 1` forever.
 - Any protocol change needs an update to this file and a compatibility test
   against the previously published `child` build.
+- **Feature detection, when it's needed, is additive too.** If a later release has to
+  know whether the other side supports something (a new port message, say), it adds an
+  optional feature list to `syn`/`ack`. v1 receivers ignore the field, and its absence
+  means "a release from before the list". That's why the list isn't added before it has
+  a first user: it would be frozen with v1 without anything to describe.
+  `protocol.test.ts` → "forward compatibility" pins what makes this safe: known messages
+  with unknown fields still parse, and unknown port types are dropped.
 
 ## Connection sharing
 
