@@ -74,6 +74,16 @@ export function deriveExpectedOrigin(iframe: HTMLIFrameElement): string {
   }
 }
 
+/**
+ * Whether the iframe's `src` (or `srcdoc`) puts its document on this page's origin, so
+ * reading `contentDocument` is worth trying. For another origin it isn't: WebKit logs a
+ * security error for the attempt, even when it's caught. (A `src` that redirects back
+ * to this origin is missed, and falls back to what the page inside reports.)
+ */
+export function readableFromSrc(iframe: HTMLIFrameElement): boolean {
+  return deriveExpectedOrigin(iframe) === location.origin;
+}
+
 /** Whether `actual` (a `MessageEvent.origin`) satisfies one of `matchers`. */
 export function originAllowed(actual: string, matchers: readonly OriginMatcher[]): boolean {
   return matchers.some((matcher) =>

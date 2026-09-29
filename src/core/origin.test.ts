@@ -7,6 +7,7 @@ import {
   normalizeOriginMatchers,
   OPAQUE,
   originAllowed,
+  readableFromSrc,
   sameOriginMatchers,
   WILDCARD,
 } from './origin';
@@ -214,5 +215,20 @@ describe('sameOriginMatchers', () => {
   it('compares RegExp by source and flags', () => {
     expect(sameOriginMatchers([/^a$/i], [/^a$/i])).toBe(true);
     expect(sameOriginMatchers([/^a$/i], [/^a$/])).toBe(false);
+  });
+});
+
+describe('readableFromSrc', () => {
+  it('is true for this origin, srcdoc and no src, false for other and opaque origins', () => {
+    const frame = (attributes: Record<string, string>) => {
+      const iframe = document.createElement('iframe');
+      for (const [name, value] of Object.entries(attributes)) iframe.setAttribute(name, value);
+      return iframe;
+    };
+    expect(readableFromSrc(frame({}))).toBe(true);
+    expect(readableFromSrc(frame({ src: '/page' }))).toBe(true);
+    expect(readableFromSrc(frame({ srcdoc: '<p>x</p>', src: 'https://a.example/' }))).toBe(true);
+    expect(readableFromSrc(frame({ src: 'https://widget.example.com/' }))).toBe(false);
+    expect(readableFromSrc(frame({ src: 'data:text/html,x' }))).toBe(false);
   });
 });

@@ -271,6 +271,15 @@ class of bug as facebook/react#22847. On every `load`:
 The mode is re-evaluated on every `load`, because the iframe may navigate across
 origins.
 
+The document is only read when the iframe's `src` (or `srcdoc`) puts it on the page's
+own origin (`readableFromSrc` in `src/core/origin.ts`). WebKit logs a security error for
+every read of another origin's `contentDocument`, even a caught one, and resize and
+inert re-read on every `load`: a host page with a cross-origin widget got one error per
+load in Safari. A `src` that redirects back to the page's origin is then handled as
+cross-origin, which works as long as the page inside reports its size. The e2e specs for
+cross-origin resize, inert, the host entry and third-party iframes fail on any console
+error (`e2e/console.ts`).
+
 ## Portal mode and the Firefox fix (facebook/react#22847)
 
 **Bug:** when an `<iframe>` is inserted, browsers create an initial `about:blank`

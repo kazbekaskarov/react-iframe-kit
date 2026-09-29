@@ -15,7 +15,15 @@ export type IframeLoadStatus = 'loading' | 'loaded' | 'timeout';
  */
 export function hasLoaded(iframe: HTMLIFrameElement): boolean {
   if (!iframe.contentWindow) return false; // not in a document
-  const doc = iframe.contentDocument;
+  // Usually the initial about:blank (the hook mounts with the iframe), which is on our
+  // origin and reads silently. Once the page inside is cross-origin, WebKit logs a
+  // security error for this read, so it happens once, at mount, and never on `load`.
+  let doc: Document | null;
+  try {
+    doc = iframe.contentDocument;
+  } catch {
+    return true; // another origin's document: its navigation committed
+  }
   if (!doc) return true;
   if (doc.readyState !== 'complete') return false;
   const src = iframe.getAttribute('src');

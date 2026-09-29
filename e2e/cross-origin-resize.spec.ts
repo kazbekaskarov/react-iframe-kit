@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { watchConsoleErrors } from './console';
 
 // Real cross-origin resize: two dev-server ports, so this is a genuine
 // parent-window ↔ child-window handshake over `postMessage`/`MessagePort`, not a
@@ -10,6 +11,7 @@ for (const variant of ['child', 'child/lite']) {
   test(`sizes a cross-origin iframe from the autoResize report of react-iframe-kit/${variant}`, async ({
     page,
   }) => {
+    const noConsoleErrors = watchConsoleErrors(page);
     await page.goto(`/cross-origin-resize-host.html${query}`);
 
     const frame = page.frameLocator('iframe[title="frame"]');
@@ -40,6 +42,7 @@ for (const variant of ['child', 'child/lite']) {
     await expect
       .poll(() => iframe.evaluate((el: HTMLIFrameElement) => el.clientHeight))
       .toBeGreaterThan(reportedHeight);
+    noConsoleErrors();
   });
 }
 

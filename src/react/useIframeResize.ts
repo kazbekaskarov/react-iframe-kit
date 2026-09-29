@@ -3,6 +3,7 @@ import { applySize, axesOf, clamp, type ResizeAxis, type SizeLimits } from '../c
 import { createLoopGuard, type LoopGuard } from '../core/loopGuard';
 import type { MeasureFn, Measurement, Size } from '../core/measure';
 import { observeSize } from '../core/observeSize';
+import { readableFromSrc } from '../core/origin';
 import { acquireParentConnection } from '../core/parentConnection';
 import type { IframeConnectionOptions } from './connectionOptions';
 import { type IframeTarget, useIframeTarget } from './useIframeTarget';
@@ -181,6 +182,7 @@ export function useIframeResize(
     // first load every iframe holds an initial about:blank that is readable even
     // when `src` is cross-origin. See docs/design.md → Two modes.
     const readDocument = (): Document | null => {
+      if (!readableFromSrc(iframe)) return null; // cross-origin: the child reports
       let doc: Document | null;
       try {
         doc = iframe.contentDocument;

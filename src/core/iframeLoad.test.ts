@@ -30,6 +30,17 @@ describe('hasLoaded', () => {
     expect(hasLoaded(frame(null, { src: 'https://maps.example.com/' }))).toBe(true);
   });
 
+  it('is true when reading the document throws (WebKit, another origin)', () => {
+    const iframe = document.createElement('iframe');
+    Object.defineProperty(iframe, 'contentWindow', { get: () => ({}) });
+    Object.defineProperty(iframe, 'contentDocument', {
+      get() {
+        throw new DOMException('Blocked a frame', 'SecurityError');
+      },
+    });
+    expect(hasLoaded(iframe)).toBe(true);
+  });
+
   it('is false while the document is still loading', () => {
     expect(hasLoaded(frame({ readyState: 'interactive', URL: 'https://a.test/' }))).toBe(false);
   });
