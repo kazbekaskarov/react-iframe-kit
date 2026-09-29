@@ -71,7 +71,7 @@ connectToParent({ allowedOrigins: ['https://app.example.com'], autoResize: true 
 No bundler on that page? One script tag, pinned to a version with its integrity hash:
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/react-iframe-kit@0.3.0/dist/child-lite.global.js" integrity="sha384-qfKxbj3iMvr1XizMH3VaSAK70Jggp/PocCrNLa5NxALDWILYOOJzkrtjcMHeOahl" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/react-iframe-kit@0.4.0/dist/child-lite.global.js" integrity="sha384-G/R0WtqBlBdgSWiF8bwxPPWfb0/wos/S8kmLhGCprzDWgGEjVeLygLtQEwSBckg8" crossorigin="anonymous"></script>
 <script>
   ReactIframeKit.connectToParent({ allowedOrigins: ['https://app.example.com'], autoResize: true });
 </script>
