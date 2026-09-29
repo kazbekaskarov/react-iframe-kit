@@ -1243,6 +1243,12 @@ TypeScript (strict) · tsdown (ESM + CJS + child IIFE, dts, publint + attw check
 Vitest · Playwright · Biome (lint + format) · size-limit · changesets ·
 GitHub Actions · `npm publish --provenance`. Package manager: pnpm.
 
+Supply chain: workflow actions are pinned to commit SHAs (Dependabot updates the pins),
+CodeQL and OpenSSF Scorecard run on `main`, the package has no runtime dependencies and
+no install scripts, and releases go out through npm trusted publishing. The README's
+"Stability, license and supply chain" section is the public version of this, with the
+semver, deprecation and license commitments.
+
 ## Open questions
 
 These can't be settled on paper and need to be resolved by a prototype before v1.

@@ -3,6 +3,7 @@
 [![npm](https://img.shields.io/npm/v/react-iframe-kit)](https://www.npmjs.com/package/react-iframe-kit)
 [![CI](https://github.com/kazbekaskarov/react-iframe-kit/actions/workflows/ci.yml/badge.svg)](https://github.com/kazbekaskarov/react-iframe-kit/actions/workflows/ci.yml)
 [![license](https://img.shields.io/npm/l/react-iframe-kit)](LICENSE)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/kazbekaskarov/react-iframe-kit/badge)](https://scorecard.dev/viewer/?uri=github.com/kazbekaskarov/react-iframe-kit)
 
 **One hooks-first, TypeScript-first React library for iframes**: render React into an
 iframe, size an iframe to its content, and talk to the page inside with typed calls and
@@ -165,6 +166,26 @@ Minified and gzipped, React excluded, enforced in CI. You pay only for what you 
 - React 18 and 19.
 - The last two versions of Chrome, Edge and Firefox, and Safari 15.4+. Every change is
   tested in Chromium, Firefox and WebKit.
+
+## Stability, license and supply chain
+
+- **MIT, and it stays MIT.** No relicensing, no paid tier for features, including
+  cross-origin resize. Past releases can't be taken back, and future ones won't change
+  the license.
+- **Semantic versioning.** Until 1.0, minor releases may change the API, and the
+  [changelog](CHANGELOG.md) says how to update. From 1.0: breaking changes only in a
+  major release; a deprecated API keeps working, with a development warning, for at
+  least one minor release before it's removed.
+- **Wire protocol compatibility.** A host and an embedded page on different releases keep
+  working together: a release that speaks a new protocol version also speaks the previous
+  one for at least one major release, and CI tests every change against the last
+  published release, in both directions.
+- **Supply chain.** No runtime dependencies and no install scripts. Releases are
+  published from CI with npm trusted publishing, with
+  [provenance](https://docs.npmjs.com/generating-provenance-statements) linking each
+  tarball to the commit and workflow that built it. Workflow actions are pinned to
+  commit SHAs; CodeQL and OpenSSF Scorecard run on every change to `main`.
+- **Security fixes** are acknowledged within 72 hours; see [SECURITY.md](SECURITY.md).
 
 ## Contributing
 

@@ -8,6 +8,15 @@ updates:
       dev-dependencies:
         dependency-type: development
         update-types: [minor, patch]
+  # The docs site has its own lockfile.
+  - package-ecosystem: npm
+    directory: /site
+    schedule:
+      interval: weekly
+    groups:
+      site:
+        update-types: [minor, patch]
+  # Updates the SHA pins in the workflows, keeping the version comments.
   - package-ecosystem: github-actions
     directory: /
     schedule:
