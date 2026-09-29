@@ -34,7 +34,10 @@ async function loadFiles() {
   if (mode === '--from-dist') {
     return (name) => readFileSync(new URL(`dist/${name}`, root));
   }
-  const { tgz } = await downloadPublished(version);
+  // Right after a release (the `--check` in release.yml), the registry may not serve it yet.
+  const { tgz } = await downloadPublished(version, {
+    waitMs: mode === '--check' ? 10 * 60_000 : 0,
+  });
   const files = new Map();
   for (const entry of tarEntries(tgz)) {
     if (entry.type === '0') files.set(entry.name.replace(/^package\//, ''), entry.body);
