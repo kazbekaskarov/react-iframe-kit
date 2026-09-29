@@ -187,6 +187,7 @@
     "check:package": "publint --strict && attw --pack . --profile node16 && node scripts/check-prod-build.mjs",
     "size": "size-limit",
     "changeset": "changeset",
+    "version-packages": "changeset version && pnpm build && node scripts/cdn-snippets.mjs --from-dist",
     "release": "pnpm build && changeset publish"
   },
   "peerDependencies": {

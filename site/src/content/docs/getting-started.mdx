@@ -6,9 +6,8 @@ description: Install react-iframe-kit and pick the part you need.
 import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
 
 <Aside>
-  These docs follow the `main` branch. Everything described here is in `0.2.0`, except
-  [Trusted Types](/react-iframe-kit/guides/security/#trusted-types) support, which ships
-  with the next release.
+  These docs follow the `main` branch. Everything described here is in `0.3.0`, except
+  what's marked *next release*: `status: 'timeout'`, predicates in `allowedOrigins`.
 </Aside>
 
 ## Install
@@ -28,12 +27,16 @@ React 18 or 19 is a peer dependency. The package has these entry points:
 | `react-iframe-kit/child/lite` | the page inside the iframe, when it needs no RPC | no | `connectToParent` for resize, title and inert only: 4 kB instead of 6 kB |
 | `react-iframe-kit/child/react` | the page inside the iframe | yes | `useParent`, `useParentEvent` |
 | `react-iframe-kit/testing` | your tests | no | `mockChild`, `mockParent` |
+| `react-iframe-kit/devtools` | either page, in development | no | `onProtocolMessage`, `connectReduxDevTools`: the protocol traffic in Redux DevTools |
 
 A page without a bundler can load a child entry from a CDN as a script; it defines a
-global `ReactIframeKit`. For a page that only needs to be sized, the lite build is enough:
+global `ReactIframeKit`. For a page that only needs to be sized, the lite build is enough.
+The snippet is pinned to a version and carries its
+[integrity hash](https://developer.mozilla.org/en-US/docs/Web/Security/Subresource_Integrity),
+so the file can't change under you; to upgrade, copy the snippet again from here.
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/react-iframe-kit/dist/child-lite.global.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/react-iframe-kit@0.3.0/dist/child-lite.global.js" integrity="sha384-qfKxbj3iMvr1XizMH3VaSAK70Jggp/PocCrNLa5NxALDWILYOOJzkrtjcMHeOahl" crossorigin="anonymous"></script>
 <script>
   ReactIframeKit.connectToParent({ allowedOrigins: ['https://app.example.com'], autoResize: true });
 </script>
