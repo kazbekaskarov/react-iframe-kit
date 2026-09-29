@@ -22,6 +22,7 @@ import {
 } from './protocol';
 import { getRegistry } from './registry';
 import type { RpcAcquireOptions, RpcEngine, RpcHandle } from './rpc';
+import { warnIneffectiveSandbox } from './sandbox';
 
 export type ConnectionStatus = 'connecting' | 'connected';
 
@@ -395,6 +396,7 @@ export function acquireParentConnection(
   if (!connection) {
     connection = new ParentConnectionImpl(iframe);
     map.set(iframe, connection);
+    warnIneffectiveSandbox(iframe);
   }
   connection.acquire({ origin, debug: options.debug });
   return connection;

@@ -7,8 +7,8 @@ import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
 
 <Aside>
   These docs follow the `main` branch. Everything described here is in `0.3.0`, except
-  what's marked *next release*: `react-iframe-kit/host`, `status: 'timeout'`,
-  predicates in `allowedOrigins`.
+  what's marked *next release*: `react-iframe-kit/host`, `useIframeLoad`,
+  `status: 'timeout'`, predicates in `allowedOrigins`.
 </Aside>
 
 ## Install
@@ -23,7 +23,7 @@ React 18 or 19 is a peer dependency. The package has these entry points:
 
 | Import | Use it in | Needs React | Gives you |
 |---|---|---|---|
-| `react-iframe-kit` | the page that owns the `<iframe>` | yes | `<Frame>`, `useFrame`, `useIframe`, `useIframeResize`, `useIframeRPC`, `useIframeEvent`, `useIframeTitle`, `useIframeInert` |
+| `react-iframe-kit` | the page that owns the `<iframe>` | yes | `<Frame>`, `useFrame`, `useIframe`, `useIframeResize`, `useIframeRPC`, `useIframeEvent`, `useIframeTitle`, `useIframeInert`, `useIframeLoad` |
 | `react-iframe-kit/child` | the page inside the iframe | no | `connectToParent` |
 | `react-iframe-kit/child/lite` | the page inside the iframe, when it needs no RPC | no | `connectToParent` for resize, title and inert only: 4 kB instead of 6 kB |
 | `react-iframe-kit/child/react` | the page inside the iframe | yes | `useParent`, `useParentEvent` |

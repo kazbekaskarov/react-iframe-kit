@@ -32,6 +32,9 @@ export default defineConfig({
             const policy = TRUSTED_TYPES_CSP[name];
             if (policy) res.setHeader('Content-Security-Policy', policy);
           }
+          // A server that never answers, for e2e/third-party.spec.ts. Held until the
+          // client goes away.
+          if (req.url?.startsWith('/__hang')) return;
           if (req.url?.startsWith('/dual-host.html')) {
             res.setHeader('Content-Security-Policy', DUAL_HOST_CSP);
           }

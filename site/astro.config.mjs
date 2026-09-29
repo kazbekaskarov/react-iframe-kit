@@ -27,6 +27,7 @@ export default defineConfig({
             'guides/resize',
             'guides/rpc',
             'guides/embedding',
+            'guides/third-party',
             'guides/security',
             'guides/accessibility',
             'guides/testing',

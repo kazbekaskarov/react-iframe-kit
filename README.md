@@ -157,7 +157,7 @@ the same iframe share one handshake.
 
 | Import | Use it in | Gives you |
 |---|---|---|
-| `react-iframe-kit` | the page that owns the `<iframe>` | `<Frame>`, `useFrame`, `useIframe`, `useIframeResize`, `useIframeRPC`, `useIframeEvent`, `useIframeTitle`, `useIframeInert` |
+| `react-iframe-kit` | the page that owns the `<iframe>` | `<Frame>`, `useFrame`, `useIframe`, `useIframeResize`, `useIframeRPC`, `useIframeEvent`, `useIframeTitle`, `useIframeInert`, `useIframeLoad` |
 | `react-iframe-kit/child` | the page inside the iframe | `connectToParent`, with RPC and events |
 | `react-iframe-kit/child/lite` | the page inside, when it only needs resize, title and inert | `connectToParent` without RPC |
 | `react-iframe-kit/child/react` | the page inside, with React | `useParent`, `useParentEvent` |

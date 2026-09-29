@@ -214,6 +214,40 @@ widget.dispose();
   `e2e/host.spec.ts`, which runs a real cross-origin widget under a host page without
   React, from the sources and from the `<script>` build, in every engine.
 
+## Third-party iframes
+
+Everything above needs the page inside to cooperate (`connectToParent`), except
+portals. Embedding a page you don't control (a map, a video, a partner's app, a payment
+form) leaves the parent with very little, and the library says so rather than pretending:
+
+- **`useIframeLoad(target, { timeout })`** → `'idle' | 'loading' | 'loaded' | 'timeout'`,
+  from the native `load` alone (`src/core/iframeLoad.ts`). It needs nothing inside the
+  iframe and opens no connection.
+  - Already loaded at mount counts: a readable document that is `complete` and isn't
+    the initial `about:blank` of an iframe with a `src`/`srcdoc` on its way, or a
+    cross-origin document (`contentDocument` is `null` while `contentWindow` exists),
+    whose navigation has committed. The latter may still be loading; its `load` then
+    arrives anyway, so the only cost is reporting `loaded` a little early.
+  - `'timeout'` isn't final: a later `load` moves it to `'loaded'`.
+  - For `loading="lazy"`, time counts from when the iframe first intersects the
+    viewport (an `IntersectionObserver`): off screen the browser doesn't load it, and a
+    timer from mount would time out every lazy iframe below the fold. Without
+    `IntersectionObserver`, it falls back to a plain timer.
+  - `loaded` means the browser finished loading *a* document. An error page, or a page
+    that refuses to be framed, may fire `load` too, and a cross-origin parent can't tell
+    the difference. The docs say so; only a handshake (`useIframeRPC`'s status) proves a
+    cooperating page works.
+  - Covered by `src/core/iframeLoad.test.ts` and `e2e/third-party.spec.ts` (a real
+    cross-origin page that knows nothing about the library, a server that never answers,
+    and a lazy iframe far below the fold), in every engine.
+- **Size:** a non-cooperating cross-origin page can't be measured. The guide recommends
+  a fixed size or `aspect-ratio`.
+- **`sandbox`:** every parent connection checks, in development, for `allow-scripts` +
+  `allow-same-origin` on content from the page's own origin, which the framed script can
+  undo, and warns once per iframe (`src/core/sandbox.ts`). The docs have a table of
+  `sandbox`/`allow`/`referrerpolicy` choices per kind of content; presets as code would
+  freeze opinions into the API for little gain.
+
 ## Two modes
 
 | | Same-origin (portal) | Cross-origin (`src=URL`) |

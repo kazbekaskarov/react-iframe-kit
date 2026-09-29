@@ -17,6 +17,7 @@ For the page that owns the `<iframe>`.
 | `useIframeEvent` | `<Remote, Name>(target, name, handler, options?) => void` | [RPC](/react-iframe-kit/guides/rpc/) |
 | `useIframeTitle` | `(target, { origin? }?) => string \| null` | [RPC](/react-iframe-kit/guides/rpc/#the-iframes-title) |
 | `useIframeInert` | `(target, inert, { origin? }?) => void` | [Accessibility](/react-iframe-kit/guides/accessibility/#disabling-an-iframe) |
+| `useIframeLoad` | `(target, { timeout? }?) => 'idle' \| 'loading' \| 'loaded' \| 'timeout'` | [Third-party iframes](/react-iframe-kit/guides/third-party/) |
 | `withOptions` | `(remote.method, { signal?, timeout? }) => sameSignature` | [RPC](/react-iframe-kit/guides/rpc/) |
 | `transfer` | `(value, transferables) => value` | [RPC](/react-iframe-kit/guides/rpc/) |
 | `IframeKitError`, `RemoteError`, `TimeoutError`, `isIframeKitError` | | [Errors](/react-iframe-kit/reference/errors/) |
