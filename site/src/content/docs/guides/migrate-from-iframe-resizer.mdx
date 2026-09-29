@@ -1,0 +1,154 @@
+---
+title: Migrate from iframe-resizer
+description: Replace iframe-resizer (v4, v5) or iframe-resizer-react with react-iframe-kit, option by option. MIT, cross-origin included.
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+iframe-resizer has sized cross-origin iframes for over a decade. Since version 5 it is
+licensed GPL-3.0 or commercially, and cross-origin use needs a paid license; most of its
+users are still on the MIT-licensed 4.x and on `iframe-resizer-react` 1.x, which no longer
+get updates. react-iframe-kit does the same job under MIT, with a 4 kB script in the page
+inside (`@iframe-resizer/child` is 12 kB), and adds typed calls and events.
+
+<Aside>
+  The host without React (`react-iframe-kit/host` and its `<script>` build) ships with the
+  *next release*. With a React host, everything below works today.
+</Aside>
+
+The two libraries speak different protocols, so change both pages in the same release,
+or keep the old script on the page inside until every host has moved.
+
+<Steps>
+
+1. **The page inside the iframe.** Replace `iframeResizer.contentWindow.js` (or
+   `@iframe-resizer/child`) with the lite child script, and list the sites that may embed
+   the page. iframe-resizer's `targetOrigin` was optional; `allowedOrigins` is required.
+
+   <Tabs syncKey="child">
+     <TabItem label="Script tag">
+
+   ```html
+   <!-- before -->
+   <script src="https://cdn.jsdelivr.net/npm/iframe-resizer@4/js/iframeResizer.contentWindow.min.js"></script>
+
+   <!-- after -->
+   <script src="https://cdn.jsdelivr.net/npm/react-iframe-kit@0.3.0/dist/child-lite.global.js" integrity="sha384-qfKxbj3iMvr1XizMH3VaSAK70Jggp/PocCrNLa5NxALDWILYOOJzkrtjcMHeOahl" crossorigin="anonymous"></script>
+   <script>
+     ReactIframeKit.connectToParent({
+       allowedOrigins: ['https://app.example.com'],
+       autoResize: true,
+       syncTitle: true, // optional: the host can use the page's title as the iframe's
+     });
+   </script>
+   ```
+
+     </TabItem>
+     <TabItem label="Bundler">
+
+   ```ts
+   // before: import '@iframe-resizer/child';
+   import { connectToParent } from 'react-iframe-kit/child/lite';
+
+   connectToParent({ allowedOrigins: ['https://app.example.com'], autoResize: true });
+   ```
+
+     </TabItem>
+   </Tabs>
+
+   If the page also used `parentIFrame.sendMessage` or `onMessage`, use the full
+   `react-iframe-kit/child` (`child.global.js`) for events and calls; see step 3.
+
+2. **The host page.**
+
+   <Tabs syncKey="host">
+     <TabItem label="React">
+
+   ```tsx
+   // before: iframe-resizer-react / @iframe-resizer/react
+   <IframeResizer src={url} checkOrigin={['https://widget.example.com']}
+     style={{ width: '100%' }} onResized={({ height }) => log(height)} />
+
+   // after
+   import { useIframeResize } from 'react-iframe-kit';
+
+   function Widget({ url }: { url: string }) {
+     const ref = useRef<HTMLIFrameElement>(null);
+     useIframeResize(ref, { onResize: ({ height }) => log(height) });
+     return <iframe ref={ref} src={url} title="Widget" style={{ width: '100%', border: 0 }} />;
+   }
+   ```
+
+     </TabItem>
+     <TabItem label="Plain JavaScript">
+
+   ```js
+   // before
+   iframeResize({ checkOrigin: ['https://widget.example.com'], onResized }, '#widget');
+
+   // after (npm: import { connectToIframe } from 'react-iframe-kit/host')
+   ReactIframeKitHost.connectToIframe(document.getElementById('widget'), {
+     resize: true,
+     onResize: ({ width, height }) => onResized({ width, height }),
+   });
+   ```
+
+   With a script tag, load `dist/host.global.js`; see
+   [Embedding a widget](/react-iframe-kit/guides/embedding/#the-host-page).
+
+     </TabItem>
+   </Tabs>
+
+   The expected origin comes from the iframe's `src`. Pass `origin` only when the `src`
+   redirects to another origin.
+
+3. **Messages.** `sendMessage`/`onMessage` carried untyped data one way at a time.
+   Describe it once as a contract, and both sides are typed:
+
+   ```ts
+   // inside, before: parentIFrame.sendMessage({ type: 'added', id })
+   parent.emit('added', { id });
+
+   // host, before: onMessage: ({ message }) => { if (message.type === 'added') … }
+   widget.on('added', ({ id }) => refresh(id)); // or useIframeEvent in React
+   ```
+
+   Anything that expected an answer becomes a method call with a promise:
+   `await remote.getCart()`. See [RPC and events](/react-iframe-kit/guides/rpc/).
+
+4. **Remove** `iframe-resizer`, `iframe-resizer-react`, `@iframe-resizer/*` and any
+   `license` option.
+
+</Steps>
+
+## Option by option
+
+| iframe-resizer | react-iframe-kit |
+|---|---|
+| `license` | Not needed: MIT, cross-origin included. |
+| `checkOrigin` (host) | `origin`, derived from `src` by default. Always checked; `'*'` needs `unsafeAllowAnyOrigin`. |
+| `targetOrigin` (inside) | `allowedOrigins`, required: exact origins, anchored `RegExp`s or a predicate. |
+| `minHeight`, `maxHeight`, `minWidth`, `maxWidth` | Same names, on `useIframeResize` or `connectToIframe({ resize })`. |
+| `sizeWidth`, `sizeHeight` | `axis: 'height' \| 'width' \| 'both'`. Width needs `html { width: max-content }` inside. |
+| `heightCalculationMethod`, `widthCalculationMethod` | Usually not needed: the page's `<html>` box, with `scrollHeight` when content overflows it. For unusual layouts, `autoResize: { measure: (doc) => ({ width, height }) }` inside. |
+| `tolerance` | Not needed: sizes are rounded up and unchanged sizes aren't sent. |
+| `onResized` | `onResize(size)`. |
+| `onInit` / `onReady` | `status === 'connected'`, `onStatusChange`, or `await whenConnected()`. |
+| `warningTimeout` | `connectTimeout`, and `status: 'timeout'` to show a fallback. Development builds warn when no size has arrived after 5 s. |
+| `onMessage` / `sendMessage` | Typed events (`emit`/`on`, `useIframeEvent`) and method calls (`remote`). |
+| `parentIFrame.close()`, `onClosed` | An event such as `emit('closed')`; the host removes the iframe. |
+| `parentIFrame.scrollTo`, `scrollToOffset`, `getPageInfo`, `inPageLinks` | Methods you define on the host, e.g. `scrollIntoView(offset)`, called with `remote.scrollIntoView()`. |
+| `scrolling` | The iframe's own `scrolling` attribute or CSS. |
+| `autoResize: false`, `parentIFrame.size()` | Stop or start with the handle's `dispose()` or a new `connectToParent`. |
+| `bodyMargin`, `bodyPadding` | Your page's CSS. |
+| — | New: title for screen readers (`syncTitle`), `inert` that also stops keys inside, a feedback-loop guard for `100vh` content, version skew tested in CI. |
+
+## Things that behave differently
+
+- **An iframe that is hidden** (`display: none`, a closed tab panel) keeps its last size
+  instead of collapsing to 0 and jumping back when shown.
+- **Content sized from the viewport** (`height: 100vh` plus a margin) would grow forever;
+  the loop guard stops it and calls `onResizeLoop`.
+- **Only what you list may connect.** An iframe-resizer page without `targetOrigin`
+  talked to any host. Here the page inside must list the host's origin, and the host
+  checks the page's.

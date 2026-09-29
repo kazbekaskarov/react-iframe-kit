@@ -19,7 +19,10 @@ export default defineConfig({
       social: [{ icon: 'github', label: 'GitHub', href: repo }],
       editLink: { baseUrl: `${repo}/edit/main/site/` },
       sidebar: [
-        { label: 'Start here', items: ['getting-started', 'comparison'] },
+        {
+          label: 'Start here',
+          items: ['getting-started', 'comparison', 'guides/migrate-from-iframe-resizer'],
+        },
         {
           label: 'Guides',
           items: [

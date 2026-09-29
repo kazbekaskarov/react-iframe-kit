@@ -11,7 +11,8 @@ events, all over one connection per iframe.
 
 **[Docs, guides and live demos](https://kazbekaskarov.github.io/react-iframe-kit/)** ·
 [Design and wire protocol](docs/design.md) ·
-[Comparison with other libraries](https://kazbekaskarov.github.io/react-iframe-kit/comparison/)
+[Comparison with other libraries](https://kazbekaskarov.github.io/react-iframe-kit/comparison/) ·
+[Migrate from iframe-resizer](https://kazbekaskarov.github.io/react-iframe-kit/guides/migrate-from-iframe-resizer/)
 
 > **Pre-1.0.** The API can still change before 1.0; breaking changes are called out in
 > the [changelog](CHANGELOG.md).

@@ -1,6 +1,6 @@
 ---
 title: Comparison
-description: How react-iframe-kit relates to react-frame-component, iframe-resizer, Penpal and Comlink.
+description: How react-iframe-kit relates to react-frame-component, iframe-resizer, Penpal and Comlink, including licenses.
 tableOfContents: false
 ---
 
@@ -19,9 +19,13 @@ of them and already use a good library for it, you may not need this one.
 | Events | ✅ | — | ⚠️ ² | — | — |
 | Typed calls | ✅ | — | — | ✅ | ✅ |
 | React hooks | ✅ | component | ✅ ³ | — | — |
+| Host page without React | ✅ ⁶ | — | ✅ | ✅ | ✅ |
+| Load and timeout status | ✅ | — | — | ⚠️ ⁷ | — |
+| Runtime validation of arguments | ✅ ⁸ | — | — | — | — |
 | Origin checks enforced | ✅ | n/a | configurable | configurable | optional ⁴ |
 | One connection for everything | ✅ | n/a | n/a | n/a | n/a |
 | Built for | iframes | iframes | iframes | iframes, workers, windows | workers ⁵ |
+| License | MIT | MIT | GPL-3.0 or commercial (v5+) ⁹ | MIT | Apache-2.0 |
 
 Notes:
 
@@ -33,6 +37,12 @@ Notes:
 3. Through a separate React package.
 4. Its window endpoint can be limited to an origin, but nothing makes you.
 5. Iframes through a window adapter.
+6. `react-iframe-kit/host`, also as a `<script>` build (next release).
+7. The connection promise rejects after a timeout; there is no load state for an iframe
+   that doesn't run the library.
+8. `react-iframe-kit/validate`, with any Standard Schema library (next release).
+9. Cross-origin use needs a paid license from v5. 4.x and `iframe-resizer-react` 1.x are
+   MIT but no longer updated.
 
 <Aside type="note">
   This table reflects each project's documented features as of September 2026, written by
@@ -47,4 +57,5 @@ Notes:
 - **Deeply nested objects or callbacks across the boundary:** Comlink's proxies do that.
   Here, `remote` is a flat method map and only cloneable data crosses.
 - **You already run iframe-resizer and only need resizing:** it's mature and widely used.
-  The two use different wire protocols and can't talk to each other.
+  The two use different wire protocols and can't talk to each other. If its license is
+  why you're looking, see [Migrate from iframe-resizer](/react-iframe-kit/guides/migrate-from-iframe-resizer/).
