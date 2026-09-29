@@ -559,6 +559,31 @@ In all cases the connection stays open.
   `protocol.test.ts` → "forward compatibility" pins what makes this safe: known messages
   with unknown fields still parse, and unknown port types are dropped.
 
+### Stability
+
+Wire protocol v1 is a public contract, not only the one between library releases: a
+page may speak it without the library. The docs page "Integrate without the library"
+(`site/src/content/docs/guides/without-the-library.mdx`) describes it for that reader,
+with a complete host in plain JavaScript.
+
+- Within v1, everything in the tables above keeps its meaning and shape: message types,
+  field names and types, the handshake order, what `instance`, `session` and `bye`
+  mean, and `RIK_METHOD_NOT_FOUND` for a missing method. Changes are additive only
+  ([Versioning](#versioning)).
+- Not part of it: when and how often `size` is sent, the `debug` log format, and
+  anything internal (the registry's shape is a contract between library copies, not
+  for other code).
+- Held by `e2e/manual-host.spec.ts`: the host from the docs page
+  (`e2e/fixtures/connect-widget.js`, no library code, shown on the page from that very
+  file) against the current widget in every engine: the handshake, a late host that has
+  to prompt, size, title, calls, events and errors both ways, reloads and `inert`.
+  `e2e/skew.spec.ts` runs the same host against the last published widget. A change
+  that breaks either breaks hand-written integrations, so it has to be v2, not a
+  patch.
+- The widget side written by hand isn't conformance-tested yet: teams without React
+  are on the host side. It would take a hand-written child fixture against the
+  library's host, the same way.
+
 ## Connection sharing
 
 Parent connections live in a `WeakMap<HTMLIFrameElement, Connection>` with reference
@@ -1234,6 +1259,9 @@ summaries out of its size budget.
   since it has no protocol; the tests start running with the first release that
   ships one. Against a `pnpm pack` of the current build, both directions pass on all
   three browsers.
+- **Conformance** (`e2e/manual-host.spec.ts`, in every engine): a host written by
+  hand from the protocol docs, with no library code, against the library's widget. See
+  [Stability](#stability). The skew job runs it against the last published widget too.
 - React 18 and 19 matrix in CI: the unit suite on both, and the e2e suite on React 18
   in Chromium besides the three engines on 19. The React 18 e2e job found an update
   loop that the unit job couldn't: `useIframeTarget` scheduled a same-value update
@@ -1463,6 +1491,9 @@ These can't be settled on paper and need to be resolved by a prototype before v1
    - Tests: e2e on React 18 and mobile WebKit, version skew in every engine, console
      errors fail the embed specs, forward-compatibility tests for the protocol, and the
      examples run in CI against the current build.
+   - Wire protocol v1 declared a public contract, documented for hosts that don't use
+     the library, with a hand-written host conformance-tested in every engine and
+     against the last published widget ([Stability](#stability)).
    - Trust and reach: SHA-pinned actions, CodeQL, OpenSSF Scorecard, Dependabot for the
      docs site, CDN snippets pinned with SRI on every release, a stability and license
      policy in the README, the embedding, third-party and migration guides, and

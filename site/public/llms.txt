@@ -29,6 +29,7 @@ Rules that code using it must follow:
 - [Auto-resize](https://kazbekaskarov.github.io/react-iframe-kit/guides/resize/): same- and cross-origin sizing, limits, feedback-loop guard
 - [RPC and events](https://kazbekaskarov.github.io/react-iframe-kit/guides/rpc/): contracts, calls, events, timeouts, validation, title
 - [Embedding a widget](https://kazbekaskarov.github.io/react-iframe-kit/guides/embedding/): white-label widgets on sites without React, loader scripts, tokens, analytics, payments, cookies
+- [Integrate without the library](https://kazbekaskarov.github.io/react-iframe-kit/guides/without-the-library/): wire protocol v1 (stable) for hosts that don't use the library, with a complete plain-JavaScript host tested in CI
 - [Third-party iframes](https://kazbekaskarov.github.io/react-iframe-kit/guides/third-party/): load status, sizing and sandbox/allow for pages you don't control
 - [Security](https://kazbekaskarov.github.io/react-iframe-kit/guides/security/): origins, multi-tenant allowlists, sandbox, CSP, Trusted Types
 - [Accessibility](https://kazbekaskarov.github.io/react-iframe-kit/guides/accessibility/): titles, inert, focus traps

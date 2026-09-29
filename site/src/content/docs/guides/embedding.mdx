@@ -138,6 +138,11 @@ function Tickets({ tenant }: { tenant: string }) {
 `on`, `setInert()`, `whenConnected()` and `dispose()`. See the
 [API reference](/react-iframe-kit/reference/api/#react-iframe-kithost).
 
+A customer who can't add any script of yours can speak the protocol directly: it's
+plain `postMessage` and a `MessageChannel`, documented and kept stable, with a complete
+host in plain JavaScript in
+[Integrate without the library](/react-iframe-kit/guides/without-the-library/).
+
 ## A loader script
 
 Most widget vendors hand customers one snippet, not an API: an async script plus an

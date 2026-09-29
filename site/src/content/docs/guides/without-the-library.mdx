@@ -1,0 +1,247 @@
+---
+title: Integrate without the library
+description: Embed a react-iframe-kit widget from any framework, or none, by speaking its postMessage protocol directly.
+---
+
+import { Aside, Code, Tabs, TabItem } from '@astrojs/starlight/components';
+import connectWidget from '../../../../../e2e/fixtures/connect-widget.js?raw';
+
+A widget built with react-iframe-kit talks to the page around it over a small, documented
+protocol, not over anything specific to React. This page is for a team that embeds such
+a widget and doesn't want the library on its page: a Vue or Angular app, a CMS, or a
+codebase that adds no dependencies. It describes the protocol and gives a complete host
+in plain JavaScript, under 200 lines, that you can copy or port.
+
+<Aside>
+  If you can load one script, [`react-iframe-kit/host`](/react-iframe-kit/guides/embedding/#the-host-page)
+  (6 kB, with a `<script>` build) does all of this, plus limits, timeouts and the
+  edge cases below, and works with any framework.
+</Aside>
+
+The protocol is stable: [wire protocol v1](#what-stays-stable) only grows by additions,
+and CI runs the host on this page against the real widget in Chromium, Firefox and
+WebKit, and against the last published release.
+
+## How it works
+
+The two sides meet over `window.postMessage`, and then move to a private
+`MessageChannel`:
+
+1. The widget page announces itself to its parent with a `syn`.
+2. Your page checks where that came from, creates a `MessageChannel`, and sends one
+   of its ports back in an `ack`.
+3. The widget answers `ready` on that port. From then on, **everything goes over the
+   port**: sizes, titles, calls, results and events.
+
+That's why listening to `message` events on `window` shows you the `syn` and nothing
+else: the widget sends nothing else there. The port keeps the traffic away from other
+scripts on the page, and needs no origin check per message.
+
+```
+widget (iframe)                                     your page
+  | -- syn {instance, versions} ------------------> |  window.postMessage, to '*'
+  |                                                 |  check source and origin
+  | <-- ack {session, instance, version} + port --- |  window.postMessage, to the widget's origin
+  | == ready =====================================> |  over the port
+  | == size, title, call, result, event, bye ====> |
+  | <= inert, call, result, event, bye ============ |
+```
+
+Every message is a plain object with `rik: 1` and a string `type`. Ignore anything
+else, and ignore types and fields you don't know: new ones may be added (see
+[What stays stable](#what-stays-stable)).
+
+## The handshake
+
+These three go over `window.postMessage`:
+
+| Message | From → to | Target origin | Fields |
+|---|---|---|---|
+| `syn` | widget → your page | `'*'` | `instance`: a random string per widget page load; `versions`: protocol versions it speaks, `[1]` |
+| `syn` | your page → widget | `'*'` | `versions: [1]`, no `instance`: asks the widget to announce itself |
+| `ack` | your page → widget | the widget's origin | `session`: a random string per session; `instance`: the one from its `syn`; `version: 1`; the port, as a transferable |
+
+When a `syn` with an `instance` arrives:
+
+1. Check `event.source === iframe.contentWindow` and `event.origin === '<the widget's
+   origin>'`, exactly. Drop it otherwise.
+2. Check that `versions` includes `1`.
+3. If `instance` is the one you're already talking to, drop it: it's a repeat (the
+   widget answers every prompt).
+4. If it's a different `instance`, the widget page reloaded: close the old port and
+   fail its pending calls first.
+5. Create a `MessageChannel`, keep `port1`, and post the `ack` to the origin you just
+   checked, transferring `port2`.
+6. Wait for `ready` on `port1` before sending anything.
+
+The widget sends its `syn` when it starts, and again whenever it gets your prompt `syn`.
+Send a prompt when you start and on every iframe `load` until you're connected: the
+widget may have started before your code did.
+
+## Port messages
+
+| Type | Direction | Fields | Meaning |
+|---|---|---|---|
+| `ready` | widget → page | — | The handshake is complete |
+| `size` | widget → page | `width`, `height`, `loop?` | The widget's content size in CSS px, sent when the widget turned on `autoResize`. `loop: true` while its feedback-loop guard holds growth back |
+| `title` | widget → page | `title` | The widget's `document.title`, sent when it turned on `syncTitle` |
+| `inert` | page → widget | `inert` | Whether the widget should make its document inert (your modal is open). Each session starts not inert |
+| `call` | both | `id`, `method`, `args` | Calls `method` with the `args` array. `id` is a string unique among the sender's pending calls |
+| `result` | both | `id`, `ok: true`, `value?` | The call with that `id` returned `value` |
+| `result` | both | `id`, `ok: false`, `error` | The call failed: `error` is `{ name, message, code?, data? }` |
+| `event` | both | `name`, `payload?` | A fire-and-forget event |
+| `bye` | both | — | The sender is leaving; close the port |
+
+Payloads are copied with the [structured clone algorithm](https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Structured_clone_algorithm):
+plain data, `Date`, `Map`, `ArrayBuffer` and so on, but no functions or DOM nodes.
+
+### Calls and errors
+
+Answer every `call` with exactly one `result` carrying its `id`. For a method you don't
+have, send `error: { name: 'IframeKitError', message: 'no method named "…"', code:
+'RIK_METHOD_NOT_FOUND' }`, which the widget reports as it does for a library host. Any
+other error reaches the widget's code as a `RemoteError` whose `cause` is your `error`
+object, so put a stable `code` on errors the widget should tell apart:
+
+```js
+fail: () => {
+  throw Object.assign(new Error('The card was declined'), { code: 'CARD_DECLINED' });
+},
+```
+
+`name` and `message` must be strings, `code` a string or a number. A result that doesn't
+parse is dropped, and the widget's call then times out. Your own calls need a timeout
+too: nothing in the protocol ends a call that never gets an answer.
+
+## Reloads, navigation and `bye`
+
+- **The widget reloads or navigates.** It sends `bye` from `pagehide` (best effort), and
+  the new page sends a `syn` with a new `instance`. Treat either as the end of the
+  session: close the port, fail pending calls, and handshake again.
+- **The back/forward cache.** A page restored from it keeps its `instance` and sends
+  `syn` again, which can arrive before its `bye`. That `syn` looks like a repeat and is
+  dropped, so send a prompt `syn` after every `bye`: the widget answers it with a new
+  `syn` once you're ready for it.
+- **Your page removes the widget.** Send `bye` on the port and close it. The widget
+  then waits for a new `ack`.
+- A message on a port you've already replaced belongs to the old session. Ignore it.
+
+## Security
+
+- **Check both `event.source` and `event.origin` on the `syn`**, against an origin you
+  configured, never one read from the message. Compare exactly: `startsWith` or
+  `includes` would let `https://widget.example.com.evil.test` in.
+- **Post the `ack` to that origin, never to `'*'`.** The port it carries is the whole
+  connection: a page that gets it can call your methods.
+- **The widget checks your origin too.** Its `allowedOrigins` must include your page's
+  origin, or it drops your `ack` and the handshake never completes. Ask the widget's
+  vendor to allow it.
+- **Treat everything from the widget as untrusted input**: the arguments to your
+  methods, event payloads and sizes. Validate before using them, and clamp sizes if a
+  runaway widget shouldn't stretch your page.
+- A widget in a `sandbox` without `allow-same-origin` has the opaque origin `'null'`.
+  Its `syn` then carries `event.origin === 'null'`, and the `ack` can only be posted
+  to `'*'`. Rely on the `event.source` check there, and only when the vendor says the
+  widget runs sandboxed.
+
+## A complete host
+
+The file below is the one CI tests (`e2e/fixtures/connect-widget.js`), unchanged. It
+applies the height, mirrors the title, answers calls, sends calls and events, forwards
+`inert`, and handles reloads, `bye` and the back/forward cache:
+
+<Code code={connectWidget} lang="js" title="connect-widget.js" />
+
+Using it:
+
+```js
+import { connectWidget } from './connect-widget.js';
+
+const iframe = document.querySelector('#tickets');
+const widget = connectWidget(iframe, {
+  origin: 'https://tickets.example.com',
+  methods: {
+    getToken: () => fetch('/api/ticket-token').then((response) => response.text()),
+  },
+  onEvent(name, payload) {
+    if (name === 'orderCompleted') gtag('event', 'purchase', payload);
+  },
+  onStatus: (status) => console.log('widget', status),
+});
+
+await widget.call('prefill', { email: 'ana@example.com' });
+widget.emit('themeChanged', 'dark');
+widget.setInert(true); // while your modal is open
+widget.dispose(); // when the widget is removed
+```
+
+Connect after the iframe is in the document, and dispose when it's removed:
+
+<Tabs syncKey="framework">
+  <TabItem label="Vue">
+
+```vue
+<script setup>
+import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { connectWidget } from './connect-widget.js';
+
+const iframe = ref(null);
+let widget;
+onMounted(() => {
+  widget = connectWidget(iframe.value, { origin: 'https://tickets.example.com' });
+});
+onBeforeUnmount(() => widget.dispose());
+</script>
+
+<template>
+  <iframe ref="iframe" title="Tickets" src="https://tickets.example.com/embed/acme" />
+</template>
+```
+
+  </TabItem>
+  <TabItem label="Angular">
+
+```ts
+import { Component, type ElementRef, type OnDestroy, ViewChild, type AfterViewInit } from '@angular/core';
+import { connectWidget } from './connect-widget.js';
+
+@Component({
+  selector: 'app-tickets',
+  template: `<iframe #frame title="Tickets" src="https://tickets.example.com/embed/acme"></iframe>`,
+})
+export class TicketsComponent implements AfterViewInit, OnDestroy {
+  @ViewChild('frame') frame!: ElementRef<HTMLIFrameElement>;
+  private widget?: ReturnType<typeof connectWidget>;
+
+  ngAfterViewInit() {
+    this.widget = connectWidget(this.frame.nativeElement, { origin: 'https://tickets.example.com' });
+  }
+  ngOnDestroy() {
+    this.widget?.dispose();
+  }
+}
+```
+
+  </TabItem>
+</Tabs>
+
+## What stays stable
+
+Wire protocol v1 is a public contract, the same one the library's releases use to talk
+to each other:
+
+- Everything on this page keeps its meaning and shape for as long as a release speaks
+  v1: the message types, their fields, the handshake, and the `RIK_METHOD_NOT_FOUND`
+  error.
+- Changes within v1 are additions only: new message types or new optional fields.
+  That's why a host must ignore what it doesn't know.
+- An incompatible change would be protocol v2, agreed in the handshake (`versions`).
+  A release that speaks v2 keeps speaking v1 for at least one major release.
+- Not part of the contract: how often the widget reports its size, what `debug`
+  logging prints, and what the library does internally.
+
+CI holds the library to it. The host above runs against the current widget in every
+engine and against the last published one; a change that broke it would break the
+integrations written from this page, and would have to be protocol v2. The full
+design notes are in
+[docs/design.md](https://github.com/kazbekaskarov/react-iframe-kit/blob/main/docs/design.md#wire-protocol-v1).

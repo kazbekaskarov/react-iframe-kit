@@ -211,7 +211,10 @@ Minified and gzipped, React excluded, enforced in CI. You pay only for what you 
 - **Wire protocol compatibility.** A host and an embedded page on different releases keep
   working together: a release that speaks a new protocol version also speaks the previous
   one for at least one major release, and CI tests every change against the last
-  published release, in both directions.
+  published release, in both directions. The protocol is also a public contract:
+  [Integrate without the library](https://kazbekaskarov.github.io/react-iframe-kit/guides/without-the-library/)
+  documents it for hosts that don't use the library, and CI runs the hand-written host
+  from that page against the widget in every engine.
 - **Supply chain.** No runtime dependencies and no install scripts. Releases are
   published from CI with npm trusted publishing, with
   [provenance](https://docs.npmjs.com/generating-provenance-statements) linking each
