@@ -53,7 +53,7 @@ For the page inside the iframe. No React needed; also available as a `<script>`
 | `withOptions`, `transfer` | as above |
 | `IframeKitError`, `RemoteError`, `TimeoutError`, `isIframeKitError` | |
 
-`connectToParent` options: `allowedOrigins` (required), `unsafeAllowAnyOrigin`, `methods`,
+`connectToParent` options: `allowedOrigins` (required; origin strings, anchored `RegExp`s or `(origin) => boolean` predicates), `unsafeAllowAnyOrigin`, `methods`,
 `timeout`, `connectTimeout`, `autoResize` (`true` or `{ measure }`), `syncTitle`, `debug`.
 
 ### `react-iframe-kit/child/lite`

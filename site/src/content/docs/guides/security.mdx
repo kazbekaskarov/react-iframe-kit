@@ -26,11 +26,53 @@ connectToParent({
 
 - Prefer exact origin strings. A `RegExp` must be anchored with `^…$`; a dev warning says
   when it isn't. The `g` and `y` flags are rejected, because they make `test()` stateful.
+- A function `(origin) => boolean` covers lists that change at runtime, see
+  [Multi-tenant embeds](#multi-tenant-embeds).
 - `'*'` is rejected unless you also set `unsafeAllowAnyOrigin: true`. On the child, that
   lets *any* page embed yours and call your methods.
 
 Treat everything that crosses the boundary as untrusted input: validate method arguments
-the way you would validate an HTTP request body.
+the way you would validate an HTTP request body (see
+[Validating what arrives](/react-iframe-kit/guides/rpc/#validating-what-arrives)).
+
+### Multi-tenant embeds
+
+A white-label widget is embedded by many customers, and the list changes without a
+release. Pass a predicate: it's asked on every handshake, so the list can change while the
+page is open.
+
+```ts
+const tenants = new Set(await fetchTenantOrigins()); // e.g. from your config API
+
+connectToParent({
+  allowedOrigins: [(origin) => tenants.has(origin)],
+  methods,
+});
+```
+
+- A predicate allows an origin only when it returns exactly `true`. It must be
+  synchronous: an `async` predicate returns a `Promise`, which allows nothing. Load the
+  list first, then connect.
+- Two `connectToParent` calls on one page must pass the *same* function (or equal
+  strings and `RegExp`s), otherwise the second one gets `RIK_ORIGIN_CONFLICT`.
+- Match whole origins against a list. Avoid "any subdomain of" rules for domains where
+  other people can host content: in 2024, Microsoft fixed a critical bug
+  ([CVE-2024-49038](https://www.microsoft.com/en-us/msrc/blog/2025/08/postmessaged-and-compromised))
+  in which a trusted-origin check accepted `*.sharepoint.com`, where anyone can publish a
+  page.
+
+`allowedOrigins` decides who may *talk* to your page. Who may *frame* it is decided by the
+`frame-ancestors` header, which the server has to compute per tenant, for example from
+the tenant ID in the embed URL:
+
+```http
+Content-Security-Policy: frame-ancestors https://tickets.customer-a.com https://customer-a.com
+```
+
+Only the header stops other sites from framing the page at all, which is what protects a
+checkout against clickjacking. Don't derive either list from `document.referrer` or
+`location.ancestorOrigins`: the host controls the first with `referrerpolicy`, and
+Firefox doesn't have the second.
 
 ## Choosing `sandbox` flags
 

@@ -887,8 +887,14 @@ site has the table and a guard recipe, to apply only where a library needs it.
   `data:` and `javascript:` URLs have opaque origins, see below.
 - **Child `allowedOrigins` is always required.** The child can't reliably learn its
   parent's origin: Firefox has no `location.ancestorOrigins`.
-  - Entries are exact origin strings (normalized as above) or `RegExp`s. An
-    unanchored `RegExp` (without `^…$`) logs a dev warning.
+  - Entries are exact origin strings (normalized as above), `RegExp`s or predicates
+    `(origin) => boolean`. An unanchored `RegExp` (without `^…$`) logs a dev warning.
+  - A predicate is for multi-tenant embeds, whose allowed hosts come from
+    configuration and change without a release. It is asked on every `ack`, so the
+    answer can change while the page is open. Only a return value of exactly `true`
+    allows: an async predicate returns a `Promise`, which is truthy and would
+    otherwise allow every origin. For "same `allowedOrigins`" across callers (see
+    [Connection sharing](#connection-sharing)), predicates compare by identity.
   - A `RegExp` with the `g` or `y` flag is `RIK_INVALID_OPTIONS`. With those flags,
     `test()` is stateful through `lastIndex`, so the same origin would be allowed
     and rejected on alternate calls.

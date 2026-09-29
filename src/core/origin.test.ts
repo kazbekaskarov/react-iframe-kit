@@ -137,6 +137,18 @@ describe('originAllowed', () => {
       true,
     );
   });
+
+  it('asks a predicate, and allows only on exactly `true`', () => {
+    const tenants = new Set(['https://shop.example']);
+    const isTenant = (origin: string) => tenants.has(origin);
+    expect(originAllowed('https://shop.example', [isTenant])).toBe(true);
+    expect(originAllowed('https://evil.example', [isTenant])).toBe(false);
+    tenants.add('https://evil.example'); // asked on every handshake, not cached
+    expect(originAllowed('https://evil.example', [isTenant])).toBe(true);
+    // An async predicate returns a (truthy) Promise: that must not allow anything.
+    const asyncPredicate = (async () => true) as unknown as (origin: string) => boolean;
+    expect(originAllowed('https://shop.example', [asyncPredicate])).toBe(false);
+  });
 });
 
 describe('normalizeOriginMatchers', () => {
@@ -148,6 +160,11 @@ describe('normalizeOriginMatchers', () => {
     expect(normalizeOriginMatchers(['https://Example.com/'], undefined)).toEqual([
       'https://example.com',
     ]);
+  });
+
+  it('passes predicates through', () => {
+    const predicate = (origin: string) => origin.endsWith('.example');
+    expect(normalizeOriginMatchers([predicate], undefined)).toEqual([predicate]);
   });
 
   it('passes RegExp entries through', () => {
@@ -186,6 +203,12 @@ describe('sameOriginMatchers', () => {
   it('is false for different lengths or values', () => {
     expect(sameOriginMatchers(['a'], ['a', 'b'])).toBe(false);
     expect(sameOriginMatchers(['a'], ['b'])).toBe(false);
+  });
+
+  it('compares predicates by identity', () => {
+    const predicate = () => true;
+    expect(sameOriginMatchers([predicate, 'a'], ['a', predicate])).toBe(true);
+    expect(sameOriginMatchers([predicate], [() => true])).toBe(false);
   });
 
   it('compares RegExp by source and flags', () => {
