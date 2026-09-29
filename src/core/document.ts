@@ -1,6 +1,6 @@
 /**
  * Which iframe document is safe to render into. See docs/design.md → Portal mode and
- * the Firefox fix (facebook/react#22847).
+ * document replacement.
  */
 
 /** Marks the body of the library's default srcdoc document. */

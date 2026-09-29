@@ -1,5 +1,5 @@
-// Reproduction of facebook/react#22847: content portaled into an iframe disappears in
-// Firefox because the initial about:blank document is replaced on `load`.
+// Reproduction: content portaled into an iframe disappears when the initial about:blank
+// document is replaced on `load` (old Firefox without `src`, every browser with `srcdoc`).
 // One variant per page load: ?variant=<name>. See docs/design.md → Portal mode.
 // `no-src` / `about-blank` reproduce the original bug only in Firefox ≤ 146; the e2e
 // tests use `srcdoc-naive` (replaces the document in every browser) and `frame`.

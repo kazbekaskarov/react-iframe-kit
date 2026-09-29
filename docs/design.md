@@ -262,8 +262,9 @@ form) leaves the parent with very little, and the library says so rather than pr
 **Mode detection happens after each native `load` of the iframe, never earlier.**
 Before the first `load`, every iframe holds an initial `about:blank` that inherits
 the parent's origin, so `contentDocument` is readable even when `src` is
-cross-origin. Detecting at that point would pick the wrong mode; it is the same
-class of bug as facebook/react#22847. On every `load`:
+cross-origin. Detecting at that point would pick the wrong mode, the same mistake as
+portaling into that document (see [Portal mode](#portal-mode-and-document-replacement)).
+On every `load`:
 
 - `contentDocument` readable → same-origin mode;
 - `contentDocument` is `null` or access throws → cross-origin mode.
@@ -280,26 +281,28 @@ cross-origin, which works as long as the page inside reports its size. The e2e s
 cross-origin resize, inert, the host entry and third-party iframes fail on any console
 error (`e2e/console.ts`).
 
-## Portal mode and the Firefox fix (facebook/react#22847)
+## Portal mode and document replacement
 
-**Bug:** when an `<iframe>` is inserted, browsers create an initial `about:blank`
+**Problem:** when an `<iframe>` is inserted, browsers create an initial `about:blank`
 document synchronously. If React portals into that document (e.g. from a ref callback)
 and the iframe's document is replaced afterwards, the portaled content disappears
 silently: React keeps rendering into a detached document, and nothing is logged.
 
 **Where it happens** (measured 2026-09-27 with Playwright's Firefox builds, see
-`e2e/firefox-22847.spec.ts`):
+`e2e/document-replacement.spec.ts`):
 
 | Situation | Affected |
 |---|---|
-| iframe without `src` or with `src="about:blank"` (the case in #22847) | Firefox ≤ 146, which still includes **Firefox ESR 140** (and Tor Browser, which is based on ESR). Fixed in Firefox 147/148; Chromium and WebKit never replaced the document. |
+| iframe without `src` or with `src="about:blank"` | Firefox ≤ 146 in our manual checks, which still includes **Firefox ESR 140** (and Tor Browser, which is based on ESR). Not seen from Firefox 148; Chromium and WebKit never replaced the document. |
 | iframe with `srcdoc`, portaled before `load` | **Every browser**: navigating to the srcdoc always replaces the initial document. |
 
-So the naive pattern is still broken for part of Firefox users, and anyone who adds a
+So the naive pattern can break for part of Firefox users, and anyone who adds a
 `srcdoc` (needed for standards mode, see below) hits the same race in all browsers. The
-fix below covers both.
+approach below is meant to cover both. The old-Firefox case is checked by hand only
+(see below), so the docs describe what the library does, and don't claim the problem
+is solved.
 
-**Fix:**
+**Approach:**
 
 1. The iframe is given a `srcdoc` (`<!DOCTYPE html>…<body data-rik-root>`). This also
    puts the document in standards mode. `about:blank` is quirks mode, which silently
@@ -320,12 +323,12 @@ fix below covers both.
 4. The mount node is recomputed on **every** `load`, so reloads and navigation don't
    leave React rendering into a dead document.
 
-`e2e/firefox-22847.spec.ts` covers this in all three engines: it forces a document
+`e2e/document-replacement.spec.ts` covers this in all three engines: it forces a document
 replacement with `srcdoc`, checks that mounting after the native `load` keeps the
 content, and keeps a canary asserting that mounting before `load` loses it. The Firefox
 ≤ 146 case can't run in CI (current Playwright can't drive old Firefox builds); it was
-checked manually with Firefox 128, 140, 142 and 146 (bug present) and 148, 150, 153,
-155 (fixed).
+checked manually with Firefox 128, 140, 142 and 146 (replacement present) and 148, 150,
+153, 155 (not seen).
 
 Constraints:
 
@@ -1122,7 +1125,7 @@ So `useIframe` sets `srcdoc` itself (`src/core/srcdoc.ts`):
   touches `document` until mounted. The `srcdoc` is set on the client, where it can
   go through a Trusted Types policy; it isn't needed earlier, since portaled content
   only appears after hydration anyway. The server-rendered iframe loads an
-  `about:blank` before hydration, which the marker check (step 3 of the Firefox fix)
+  `about:blank` before hydration, which the marker check (step 3 of the portal approach)
   never mistakes for the final document.
 - The embedded page is often SSR'd too (Next.js etc.). Importing `react-iframe-kit/child`
   on the server must not touch `window`, and there is no top-level side effect. On
@@ -1200,7 +1203,7 @@ summaries out of its size budget.
   dev warnings are tested there too, with Testing Library (`Frame.test.tsx`).
 - **Playwright** (chromium, firefox, webkit): real iframes, including cross-origin via
   two dev-server ports. Covered so far:
-  - the #22847 document-replacement regression (`e2e/firefox-22847.spec.ts`);
+  - document replacement under a portal (`e2e/document-replacement.spec.ts`);
   - cross-origin resize driven by the child's `autoResize`, including the parent
     applying exactly the reported height (`e2e/cross-origin-resize.spec.ts`);
   - an opaque-origin sandboxed child, both the `origin: 'null'` opt-in connecting
@@ -1420,10 +1423,12 @@ semver, deprecation and license commitments.
 
 These can't be settled on paper and need to be resolved by a prototype before v1.
 
-1. ~~**Does facebook/react#22847 still reproduce?**~~ Resolved 2026-09-27: yes in
-   Firefox ≤ 146 (incl. ESR 140), fixed in 147/148; the same race exists in every
-   browser once a `srcdoc` is used. See [Portal mode](#portal-mode-and-the-firefox-fix-facebookreact22847).
-   Positioning: "mounts only into the final document", not "fixes a current Firefox bug".
+1. ~~**Does the portal document-replacement race still reproduce?**~~ Checked
+   2026-09-27: yes in Firefox ≤ 146 (incl. ESR 140), not seen from 148; the same race
+   exists in every browser once a `srcdoc` is used. See
+   [Portal mode](#portal-mode-and-document-replacement). Positioning: "mounts only after
+   the iframe's own document has loaded", with no claim that a browser or React issue is
+   fixed.
 2. ~~**Trusted Types.**~~ Resolved 2026-09-28: React stringifies `srcDoc`, so a host
    enforcing Trusted Types crashed on `<Frame>` in every engine. The fallback plan
    shipped: the hook sets `srcdoc` itself through a `react-iframe-kit` policy. See
@@ -1442,8 +1447,8 @@ These can't be settled on paper and need to be resolved by a prototype before v1
    unit on React 18 and 19, e2e on three engines, version skew, docs site), release
    through changesets, CONTRIBUTING, SECURITY, CODE_OF_CONDUCT, issue and PR templates,
    Dependabot.
-2. ~~Minimal Firefox #22847 repro on current React + Firefox.~~ Done: see
-   [Portal mode](#portal-mode-and-the-firefox-fix-facebookreact22847).
+2. ~~Minimal repro of the portal document replacement on current React + Firefox.~~
+   Done: see [Portal mode](#portal-mode-and-document-replacement).
 3. ~~`useIframe` + `<Frame>` (+ `copyStyles`) + Playwright regression + SSR/hydration
    tests.~~ Done.
 4. ~~Same-origin resize, including the feedback-loop guard.~~ Done: `useIframeResize`

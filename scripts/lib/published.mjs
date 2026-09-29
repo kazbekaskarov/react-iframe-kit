@@ -5,9 +5,21 @@ import { gunzipSync } from 'node:zlib';
 
 export const PACKAGE = 'react-iframe-kit';
 
-/** The tarball of `spec` (a version or dist-tag), checked against the registry's hash. */
-export async function downloadPublished(spec) {
-  const metaResponse = await fetch(`https://registry.npmjs.org/${PACKAGE}/${spec}`);
+/**
+ * The tarball of `spec` (a version or dist-tag), checked against the registry's hash.
+ * `waitMs` keeps asking while the registry answers 404: right after `npm publish`, it
+ * can take minutes before a new version is served.
+ */
+export async function downloadPublished(spec, { waitMs = 0 } = {}) {
+  const deadline = Date.now() + waitMs;
+  let metaResponse;
+  for (;;) {
+    metaResponse = await fetch(`https://registry.npmjs.org/${PACKAGE}/${spec}`, {
+      cache: 'no-store',
+    });
+    if (metaResponse.status !== 404 || Date.now() >= deadline) break;
+    await new Promise((resolve) => setTimeout(resolve, 15_000));
+  }
   if (!metaResponse.ok) throw new Error(`${PACKAGE}@${spec}: registry said ${metaResponse.status}`);
   const meta = await metaResponse.json();
   const tgzResponse = await fetch(meta.dist.tarball);
