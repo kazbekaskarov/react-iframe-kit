@@ -1,0 +1,36 @@
+<!doctype html>
+<!-- The customer's site: no React, no build step. It pastes the vendor's snippet. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Acme Music Hall</title>
+    <style>
+      body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; }
+    </style>
+  </head>
+  <body>
+    <h1>Acme Music Hall</h1>
+    <p>Tickets for Friday's concert:</p>
+
+    <!-- The vendor's snippet: where the widget goes, a command queue, the loader. -->
+    <div data-tickets data-tenant="acme"></div>
+    <script>
+      // Queues commands until the loader arrives and replaces `tickets`.
+      window.tickets =
+        window.tickets ||
+        ((...command) => {
+          tickets.q = tickets.q || [];
+          tickets.q.push(command);
+        });
+      tickets('prefill', { email: 'ann@example.com' });
+      tickets('on', 'orderCompleted', (order) => {
+        // e.g. gtag('event', 'purchase', order)
+        document.getElementById('orders').textContent = `${order.orderId} (${order.tickets})`;
+      });
+    </script>
+    <script async src="http://localhost:8081/loader.js"></script>
+
+    <p>Last order: <output id="orders">none</output></p>
+  </body>
+</html>

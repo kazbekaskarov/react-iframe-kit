@@ -1,6 +1,6 @@
 ---
 title: API
-description: Every export of react-iframe-kit, react-iframe-kit/child and react-iframe-kit/child/react.
+description: Every export of react-iframe-kit, react-iframe-kit/host, react-iframe-kit/child and react-iframe-kit/child/react.
 ---
 
 ## `react-iframe-kit`
@@ -17,6 +17,7 @@ For the page that owns the `<iframe>`.
 | `useIframeEvent` | `<Remote, Name>(target, name, handler, options?) => void` | [RPC](/react-iframe-kit/guides/rpc/) |
 | `useIframeTitle` | `(target, { origin? }?) => string \| null` | [RPC](/react-iframe-kit/guides/rpc/#the-iframes-title) |
 | `useIframeInert` | `(target, inert, { origin? }?) => void` | [Accessibility](/react-iframe-kit/guides/accessibility/#disabling-an-iframe) |
+| `useIframeLoad` | `(target, { timeout? }?) => 'idle' \| 'loading' \| 'loaded' \| 'timeout'` | [Third-party iframes](/react-iframe-kit/guides/third-party/) |
 | `withOptions` | `(remote.method, { signal?, timeout? }) => sameSignature` | [RPC](/react-iframe-kit/guides/rpc/) |
 | `transfer` | `(value, transferables) => value` | [RPC](/react-iframe-kit/guides/rpc/) |
 | `IframeKitError`, `RemoteError`, `TimeoutError`, `isIframeKitError` | | [Errors](/react-iframe-kit/reference/errors/) |
@@ -39,8 +40,47 @@ connection options (`IframeConnectionOptions`): `origin`, `unsafeAllowAnyOrigin`
 | `unsafeAllowAnyOrigin` | `false` | Required to pass `origin: '*'`. |
 | `methods` | | Methods the iframe may call. The latest ones are always used. |
 | `timeout` | `10_000` | Per call, from send to result; `Infinity` allowed. |
-| `connectTimeout` | `30_000` | How long a call may wait for the connection; `Infinity` allowed. |
+| `connectTimeout` | `30_000` | How long to wait for the connection: queued calls reject, and `status` becomes `'timeout'`, after this long; `Infinity` allowed. |
 | `debug` | `false` | Log all protocol traffic. |
+
+## `react-iframe-kit/validate`
+
+Runtime validation for either side, with any Standard Schema library. *Next release.*
+
+| Export | Signature |
+|---|---|
+| `validateArgs` | `(schema, method) => method` — the schema validates the arguments as a tuple; invalid ones reject with `RIK_VALIDATION`. |
+| `validatePayload` | `(schema, handler) => handler` — an invalid payload is reported with `reportError` and not delivered. |
+| `StandardSchemaV1`, `ValidationIssue` | types |
+
+See [Validating what arrives](/react-iframe-kit/guides/rpc/#validating-what-arrives).
+
+## `react-iframe-kit/host`
+
+The page that owns the `<iframe>`, without React: a widget's loader script, a site that
+isn't a React app. Also available as a `<script>` (`dist/host.global.js`, global
+`ReactIframeKitHost`). *Next release.*
+
+| Export | Signature | Guide |
+|---|---|---|
+| `connectToIframe` | `<Remote, Local>(iframe, options?) => IframeHandle` | [Embedding a widget](/react-iframe-kit/guides/embedding/) |
+| `withOptions`, `transfer` | as above | |
+| `IframeKitError`, `RemoteError`, `TimeoutError`, `isIframeKitError` | | |
+
+| Option | Default | |
+|---|---|---|
+| `origin`, `unsafeAllowAnyOrigin`, `debug` | | As for the hooks. |
+| `methods`, `timeout`, `connectTimeout` | | As for `useIframeRPC`. |
+| `resize` | off | `true` sizes the height to the page's reports; or `{ axis, minWidth, maxWidth, minHeight, maxHeight }`. |
+| `syncTitle` | `false` | Sets the iframe's `title` attribute to the page's title, and restores the original after. |
+| `onStatusChange` | | `(status: 'connecting' \| 'connected' \| 'timeout') => void`, on every change. |
+| `onResize` | | `(size) => void`, for every size the page reports. |
+| `onResizeLoop` | | Called when the page's feedback-loop guard starts holding growth. |
+
+`IframeHandle`: `status`, `size` (`{ width, height } | null`), `title` (`string | null`),
+`remote`, `emit(name, payload?)`, `on(name, handler) => off`, `setInert(inert)`,
+`whenConnected()`, `dispose()`. It shares the iframe's connection with any hooks on the
+same iframe. Invalid options throw, as with `connectToParent`.
 
 ## `react-iframe-kit/child`
 
@@ -53,7 +93,7 @@ For the page inside the iframe. No React needed; also available as a `<script>`
 | `withOptions`, `transfer` | as above |
 | `IframeKitError`, `RemoteError`, `TimeoutError`, `isIframeKitError` | |
 
-`connectToParent` options: `allowedOrigins` (required), `unsafeAllowAnyOrigin`, `methods`,
+`connectToParent` options: `allowedOrigins` (required; origin strings, anchored `RegExp`s or `(origin) => boolean` predicates), `unsafeAllowAnyOrigin`, `methods`,
 `timeout`, `connectTimeout`, `autoResize` (`true` or `{ measure }`), `syncTitle`, `debug`.
 
 ### `react-iframe-kit/child/lite`
@@ -80,7 +120,10 @@ and stays `'idle'`.
 
 `useParent` takes the same options as `connectToParent`, read once on mount, except
 `methods`, which always uses the latest. It returns `status: 'idle'` during server
-rendering and hydration.
+rendering and hydration, and `'timeout'` after `connectTimeout` without a parent that
+completes the handshake (for example, the page is framed by a site that doesn't use the
+library); like `useIframeRPC`'s, it moves on to `'connected'` if the handshake completes
+later.
 
 ## `react-iframe-kit/testing`
 

@@ -32,6 +32,9 @@ export default defineConfig({
             const policy = TRUSTED_TYPES_CSP[name];
             if (policy) res.setHeader('Content-Security-Policy', policy);
           }
+          // A server that never answers, for e2e/third-party.spec.ts. Held until the
+          // client goes away.
+          if (req.url?.startsWith('/__hang')) return;
           if (req.url?.startsWith('/dual-host.html')) {
             res.setHeader('Content-Security-Policy', DUAL_HOST_CSP);
           }
@@ -78,10 +81,13 @@ export default defineConfig({
       { find: /^react-iframe-kit\/child\/react$/, replacement: src('child/react.ts') },
       { find: /^react-iframe-kit\/child\/lite$/, replacement: src('child/lite.ts') },
       { find: /^react-iframe-kit\/devtools$/, replacement: src('devtools/index.ts') },
+      { find: /^react-iframe-kit\/host$/, replacement: src('host/index.ts') },
       { find: /^react-iframe-kit\/child$/, replacement: src('child/index.ts') },
       { find: /^react-iframe-kit$/, replacement: src('index.ts') },
       { find: /^published-kit\/child$/, replacement: published('dist/child/index.js') },
       { find: /^published-kit$/, replacement: published('dist/index.js') },
+      // Imported with `?raw` (host-vanilla.ts), so match up to the query.
+      { find: /^kit-host-iife(?=\?|$)/, replacement: dist('host.global.js') },
       { find: /^kit-esm\/child$/, replacement: dist('child/index.js') },
       { find: /^kit-esm$/, replacement: dist('index.js') },
       { find: /^kit-cjs\/child$/, replacement: dist('child/index.cjs') },

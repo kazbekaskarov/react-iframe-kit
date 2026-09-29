@@ -2,6 +2,14 @@
  * Applies a content size to an iframe element. See docs/design.md → Resize → Applying.
  */
 
+export type ResizeAxis = 'height' | 'width' | 'both';
+
+/** Which dimensions `axis` resizes. */
+export const axesOf = (axis: ResizeAxis): { width: boolean; height: boolean } => ({
+  width: axis === 'width' || axis === 'both',
+  height: axis === 'height' || axis === 'both',
+});
+
 export interface SizeLimits {
   minWidth?: number | undefined;
   maxWidth?: number | undefined;

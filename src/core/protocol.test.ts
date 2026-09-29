@@ -278,3 +278,46 @@ describe('highestCommonVersion', () => {
     expect(highestCommonVersion([1], [1])).toBe(1);
   });
 });
+
+// docs/design.md → Versioning: additive changes don't bump `rik` because receivers
+// ignore unknown types and fields. These pin that for the v1 freeze: a later release
+// may add message types, or fields such as a feature list on `syn`/`ack`, and every
+// v1 receiver must still accept the rest of the message.
+describe('forward compatibility', () => {
+  it('accepts syn and ack with fields it does not know', () => {
+    expect(
+      parseWindowMessage({ rik: 1, type: 'syn', instance: 'i', versions: [1, 2], features: ['x'] }),
+    ).toEqual({ rik: 1, type: 'syn', instance: 'i', versions: [1, 2] });
+    expect(
+      parseWindowMessage({
+        rik: 1,
+        type: 'ack',
+        session: 's',
+        instance: 'i',
+        version: 1,
+        features: { x: true },
+      }),
+    ).toEqual({ rik: 1, type: 'ack', session: 's', instance: 'i', version: 1 });
+  });
+
+  it('accepts port messages with fields it does not know', () => {
+    expect(parsePortMessage({ rik: 1, type: 'ready', features: ['x'] })).toEqual({
+      rik: 1,
+      type: 'ready',
+    });
+    expect(parsePortMessage({ rik: 1, type: 'size', width: 1, height: 2, unit: 'px' })).toEqual({
+      rik: 1,
+      type: 'size',
+      width: 1,
+      height: 2,
+      loop: undefined,
+    });
+    expect(
+      parsePortMessage({ rik: 1, type: 'call', id: 'q', method: 'm', args: [], meta: {} }),
+    ).toEqual({ rik: 1, type: 'call', id: 'q', method: 'm', args: [] });
+  });
+
+  it.each(['cancel', 'scroll', 'overlay', 'navigate'])('drops the unknown port type %s', (type) => {
+    expect(parsePortMessage({ rik: 1, type, id: 'q' })).toBeNull();
+  });
+});

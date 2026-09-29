@@ -16,7 +16,12 @@ import { latestMethods } from '../core/latestMethods';
 import { DEFAULT_CONNECT_TIMEOUT } from '../core/rpc';
 import { useIsomorphicLayoutEffect } from '../react/useIsomorphicLayoutEffect';
 
-export type ParentStatus = ChildStatus | 'error';
+/**
+ * `'timeout'` is `'connecting'` for longer than `connectTimeout` (the page may render a
+ * fallback, e.g. "open in a new tab"). It isn't terminal: the status moves on to
+ * `'connected'` if the handshake completes later.
+ */
+export type ParentStatus = ChildStatus | 'timeout' | 'error';
 
 export type UseParentOptions<LocalSide extends SideShape = AnySide> =
   ConnectToParentOptions<LocalSide>;
@@ -48,9 +53,8 @@ export function useParent<
     optionsRef.current = options;
   });
 
-  const [deferred] = useState(
-    () => new DeferredRpc(() => optionsRef.current.connectTimeout ?? DEFAULT_CONNECT_TIMEOUT),
-  );
+  const connectTimeout = () => optionsRef.current.connectTimeout ?? DEFAULT_CONNECT_TIMEOUT;
+  const [deferred] = useState(() => new DeferredRpc(connectTimeout));
   const [state, setState] = useState<{ status: ParentStatus; error: IframeKitError | null }>({
     status: 'idle',
     error: null,
@@ -101,9 +105,22 @@ export function useParent<
       deferred.attach(entry.handle);
     }
 
+    // See useIframeRPC: `'timeout'` is local to this hook.
+    let deadline: ReturnType<typeof setTimeout> | undefined;
     let warnTimer: ReturnType<typeof setTimeout> | undefined;
     const offStatus = onParentStatusChange((status) => {
       setState((prev) => (prev.status === status ? prev : { status, error: null }));
+      clearTimeout(deadline);
+      const ms = connectTimeout();
+      if (status === 'connecting' && ms < Infinity) {
+        deadline = setTimeout(
+          () =>
+            setState((prev) =>
+              prev.status === 'connecting' ? { ...prev, status: 'timeout' } : prev,
+            ),
+          ms,
+        );
+      }
       if (!__DEV__) return;
       clearTimeout(warnTimer);
       if (status !== 'connecting') return;
@@ -118,6 +135,7 @@ export function useParent<
     return () => {
       active.current = false;
       offStatus();
+      clearTimeout(deadline);
       clearTimeout(warnTimer);
       kept.timer = setTimeout(() => {
         retained.current = undefined;

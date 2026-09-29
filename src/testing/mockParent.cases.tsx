@@ -152,6 +152,19 @@ export function mockParentCases(): void {
       parent.dispose();
     });
 
+    it("useParent reports 'timeout' after connectTimeout without a parent it accepts", async () => {
+      vi.spyOn(console, 'warn').mockImplementation(() => {}); // the dropped ack
+      const parent = mockParent({ origin: 'https://not-allowed.example' });
+      function Page() {
+        const { status } = useParent({ allowedOrigins, connectTimeout: 30 });
+        return <output data-testid="status">{status}</output>;
+      }
+      render(<Page />);
+      await waitFor(() => expect(screen.getByTestId('status').textContent).toBe('timeout'));
+      cleanup();
+      parent.dispose();
+    });
+
     it('rejects whenConnected when disposed before the page connects', async () => {
       const parent = mockParent({ origin: 'https://not-allowed.example' });
       const waiting = parent.whenConnected();

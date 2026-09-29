@@ -1,4 +1,5 @@
 import { expect, type Frame, type Page, test } from '@playwright/test';
+import { watchConsoleErrors } from './console';
 
 // useIframeInert in real browsers. `inert` on the <iframe> alone blocks clicks and Tab,
 // but in Chromium and WebKit keys still reach an element focused inside before, or one
@@ -23,6 +24,7 @@ for (const mode of ['cross', 'frame']) {
   test(`${mode === 'cross' ? 'a cross-origin page running connectToParent' : 'a same-origin <Frame>'} can't be clicked, focused or typed into while inert`, async ({
     page,
   }) => {
+    const noConsoleErrors = watchConsoleErrors(page);
     await page.goto(`/inert-host.html?mode=${mode}`);
     const iframe = page.locator('iframe[title="embed"]');
     const inside = page.frameLocator('iframe[title="embed"]');
@@ -61,5 +63,6 @@ for (const mode of ['cross', 'frame']) {
     await expect(inside.locator('#clicks')).toHaveText('1');
     await inside.locator('#inner').fill('c');
     expect(await value(page)).toBe('c');
+    noConsoleErrors();
   });
 }

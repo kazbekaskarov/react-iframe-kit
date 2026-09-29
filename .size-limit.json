@@ -58,7 +58,7 @@
     "path": "dist/child/react.js",
     "import": "*",
     "ignore": ["react", "react-dom"],
-    "limit": "7.25 kB",
+    "limit": "7.3 kB",
     "gzip": true
   },
   {
@@ -71,6 +71,26 @@
     "name": "child/lite IIFE (<script> build)",
     "path": "dist/child-lite.global.js",
     "limit": "4.25 kB",
+    "gzip": true
+  },
+  {
+    "name": "host entry (connectToIframe)",
+    "path": "dist/host/index.js",
+    "import": "*",
+    "limit": "6.25 kB",
+    "gzip": true
+  },
+  {
+    "name": "host IIFE (<script> build)",
+    "path": "dist/host.global.js",
+    "limit": "6.25 kB",
+    "gzip": true
+  },
+  {
+    "name": "validate entry (validateArgs, validatePayload)",
+    "path": "dist/validate/index.js",
+    "import": "*",
+    "limit": "1 kB",
     "gzip": true
   },
   {

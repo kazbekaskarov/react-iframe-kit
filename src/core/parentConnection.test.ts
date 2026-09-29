@@ -85,13 +85,20 @@ afterEach(() => {
 });
 
 describe('acquireParentConnection', () => {
+  it('sends its prompt syn to any origin, even to a cross-origin iframe', () => {
+    // It carries nothing, and the page's reply is checked. Aimed at the expected origin,
+    // it would make the browser log an error while the iframe still holds its initial
+    // about:blank. See docs/design.md → Handshake.
+    const { iframe, child } = createIframe();
+    iframe.src = 'https://widget.example.com/embed';
+    acquireParentConnection(iframe, { origin: 'https://widget.example.com' });
+    expect(child.postMessage).toHaveBeenCalledWith({ rik: 1, type: 'syn', versions: [1] }, '*');
+  });
+
   it('sends a syn immediately on first acquire', () => {
     const { iframe, child } = createIframe();
     acquireParentConnection(iframe, {});
-    expect(child.postMessage).toHaveBeenCalledWith(
-      { rik: 1, type: 'syn', versions: [1] },
-      location.origin,
-    );
+    expect(child.postMessage).toHaveBeenCalledWith({ rik: 1, type: 'syn', versions: [1] }, '*');
   });
 
   it('does not crash when contentWindow is null', () => {
@@ -177,10 +184,7 @@ describe('syn on iframe load', () => {
     acquireParentConnection(iframe, {});
     child.postMessage.mockClear();
     iframe.dispatchEvent(new Event('load'));
-    expect(child.postMessage).toHaveBeenCalledWith(
-      { rik: 1, type: 'syn', versions: [1] },
-      location.origin,
-    );
+    expect(child.postMessage).toHaveBeenCalledWith({ rik: 1, type: 'syn', versions: [1] }, '*');
   });
 
   it('does not resend syn once connected', async () => {
@@ -493,10 +497,7 @@ describe('bye', () => {
     await waitFor(() => connection.status === 'connecting');
 
     expect(connection.cachedSize).toBeUndefined();
-    expect(child.postMessage).toHaveBeenCalledWith(
-      { rik: 1, type: 'syn', versions: [1] },
-      location.origin,
-    );
+    expect(child.postMessage).toHaveBeenCalledWith({ rik: 1, type: 'syn', versions: [1] }, '*');
   });
 
   it('a fresh syn for the same instance after bye is accepted (not treated as a duplicate)', async () => {
@@ -540,10 +541,7 @@ describe('release and disposal', () => {
     child.postMessage.mockClear();
     const fresh = acquireParentConnection(iframe, {});
     expect(fresh).not.toBe(connection);
-    expect(child.postMessage).toHaveBeenCalledWith(
-      { rik: 1, type: 'syn', versions: [1] },
-      location.origin,
-    );
+    expect(child.postMessage).toHaveBeenCalledWith({ rik: 1, type: 'syn', versions: [1] }, '*');
   });
 
   it("a disposed connection's pending session sends bye to the child side", async () => {

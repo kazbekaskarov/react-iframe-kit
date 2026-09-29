@@ -7,6 +7,8 @@ const entry = {
   'child/index': 'src/child/index.ts',
   'child/lite': 'src/child/lite.ts',
   'child/react': 'src/child/react.ts',
+  'host/index': 'src/host/index.ts',
+  'validate/index': 'src/validate/index.ts',
   'devtools/index': 'src/devtools/index.ts',
   'testing/index': 'src/testing/index.ts',
 };
@@ -42,17 +44,19 @@ export default defineConfig([
     dts: false,
     define: { __DEV__: 'true' },
   },
-  // `<script>` builds of the child entries for pages without a bundler. One config per
-  // entry: an IIFE can't share chunks between entries.
+  // `<script>` builds for pages without a bundler. One config per entry: an IIFE can't
+  // share chunks between entries. The host build has its own global, so a page that is
+  // both (a host inside someone else's iframe) can load both.
   iife('child.global', 'src/child/index.ts'),
   iife('child-lite.global', 'src/child/lite.ts'),
+  iife('host.global', 'src/host/index.ts', 'ReactIframeKitHost'),
 ]);
 
-function iife(name: string, source: string): UserConfig {
+function iife(name: string, source: string, globalName = 'ReactIframeKit'): UserConfig {
   return {
     entry: { [name]: source },
     format: 'iife',
-    globalName: 'ReactIframeKit',
+    globalName,
     platform: 'browser',
     target: 'es2020',
     outDir: 'dist',

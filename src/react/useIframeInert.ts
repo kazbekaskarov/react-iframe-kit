@@ -1,5 +1,6 @@
 import { useRef } from 'react';
 import { makeDocumentInert } from '../core/inert';
+import { readableFromSrc } from '../core/origin';
 import { acquireParentConnection, type ParentConnection } from '../core/parentConnection';
 import type { IframeConnectionOptions } from './connectionOptions';
 import { type IframeTarget, useIframeTarget } from './useIframeTarget';
@@ -61,11 +62,14 @@ export function useIframeInert(
     let undoDocument: (() => void) | undefined;
     const applyToDocument = () => {
       undoDocument?.();
+      // Cross-origin: the page does it itself, when told over the connection.
       let doc: Document | null = null;
-      try {
-        doc = iframe.contentDocument;
-      } catch {
-        // Cross-origin: the page does it itself, when told over the connection.
+      if (readableFromSrc(iframe)) {
+        try {
+          doc = iframe.contentDocument;
+        } catch {
+          // Redirected to another origin after all.
+        }
       }
       undoDocument = doc ? makeDocumentInert(doc) : undefined;
     };

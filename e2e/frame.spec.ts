@@ -124,5 +124,9 @@ test('hydrates when the iframe loaded before hydration', async ({ page }) => {
   await expect(root).toHaveAttribute('data-loaded-before-hydration', 'true');
   await expect(frame(page).getByTestId('content')).toHaveText('hydrated');
   await expect(root).not.toHaveAttribute('data-hydration-error');
-  expect(errors).toEqual([]);
+  // React 18 warns about any layout effect in `renderToString`, and the fixture renders
+  // its "server" markup in the browser, where `window` exists and the library picks
+  // `useLayoutEffect`. On a real server it picks `useEffect`; React 19 dropped the
+  // warning.
+  expect(errors.filter((e) => !e.startsWith('Warning: useLayoutEffect does nothing'))).toEqual([]);
 });

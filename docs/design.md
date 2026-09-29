@@ -51,12 +51,16 @@ One npm package, subpath exports:
 | `react-iframe-kit/child` | iframe | no | `connectToParent`, `transfer`, `withOptions`, errors, types |
 | `react-iframe-kit/child/lite` | iframe | no | `connectToParent` without RPC and events (`autoResize`, `syncTitle`, inert), `IframeKitError`, `isIframeKitError`, types |
 | `react-iframe-kit/child/react` | iframe | yes | `useParent`, `useParentEvent` |
+| `react-iframe-kit/validate` | either | no | `validateArgs`, `validatePayload`, see [Validation](#validation) |
+| `react-iframe-kit/host` | parent | no | `connectToIframe`, `transfer`, `withOptions`, errors, types, see [Host without React](#host-without-react) |
 | `react-iframe-kit/testing` | tests (jsdom, happy-dom) | no | `mockChild`, `mockParent`, see [Testing utilities](#testing-utilities) |
 | `react-iframe-kit/devtools` | either page, in development | no | `onProtocolMessage`, `connectReduxDevTools`, `summarizeProtocolMessage`, see [Devtools](#devtools) |
 
 The `child` entry also ships as an IIFE build (`dist/child.global.js`, global
 `ReactIframeKit`) for embedded pages that don't use a bundler (served via
 jsDelivr/unpkg), and so does `child/lite` (`dist/child-lite.global.js`, same global).
+`host` has one too (`dist/host.global.js`), under its own global `ReactIframeKitHost`, so
+that a page which is both (a host inside someone else's iframe) can load both scripts.
 
 `child/lite` is for embedded pages that only need to be sized, titled and made inert:
 its `connectToParent` has the same options minus `methods`/`timeout`/
@@ -107,15 +111,18 @@ Size budgets (min+gzip, React excluded, enforced by size-limit per import scenar
 | Scenario | Budget | Measured |
 |---|---|---|
 | `useIframe` only | ≤ 1.5 kB | 1.25 kB |
-| `useIframeResize` only (pulls in the handshake/connection, not RPC) | ≤ 5 kB | 4.96 kB |
-| `<Frame>` (portal + resize + copyStyles) | ≤ 6.75 kB | 6.55 kB |
-| `useIframeRPC` + `useIframeEvent` | ≤ 6.5 kB | 6.15 kB |
-| entire parent entry | ≤ 10.5 kB | 10.12 kB |
-| `child` entry (`connectToParent` with RPC + `autoResize` + `syncTitle` + inert) | ≤ 6.5 kB | 6.32 kB |
-| `child/lite` entry (the same without RPC and events) | ≤ 4.25 kB | 4.18 kB |
-| `child/react` entry (`useParent`, `useParentEvent`) | ≤ 7.25 kB | 7.2 kB |
-| `child` IIFE | ≤ 6.5 kB | 6.32 kB |
-| `child/lite` IIFE | ≤ 4.25 kB | 4.16 kB |
+| `useIframeResize` only (pulls in the handshake/connection, not RPC) | ≤ 5 kB | 4.53 kB |
+| `<Frame>` (portal + resize + copyStyles) | ≤ 6.75 kB | 6.13 kB |
+| `useIframeRPC` + `useIframeEvent` | ≤ 6.5 kB | 6.27 kB |
+| entire parent entry | ≤ 10.5 kB | 10.08 kB |
+| `child` entry (`connectToParent` with RPC + `autoResize` + `syncTitle` + inert) | ≤ 6.5 kB | 6.35 kB |
+| `child/lite` entry (the same without RPC and events) | ≤ 4.25 kB | 4.21 kB |
+| `child/react` entry (`useParent`, `useParentEvent`) | ≤ 7.3 kB | 7.27 kB |
+| `child` IIFE | ≤ 6.5 kB | 6.33 kB |
+| `child/lite` IIFE | ≤ 4.25 kB | 4.18 kB |
+| `host` entry (`connectToIframe`, with RPC) | ≤ 6.25 kB | 5.96 kB |
+| `host` IIFE | ≤ 6.25 kB | 5.97 kB |
+| `validate` entry | ≤ 1 kB | 0.68 kB |
 | `devtools` entry | ≤ 1 kB | 0.72 kB |
 
 The [Devtools](#devtools) listener check in the shared message path costs every entry
@@ -154,6 +161,94 @@ A page that only resizes now ships 4.13 kB instead of 6.28. The split itself cos
 full entry 0.05 kB (the engine-less `call` answer, the lazy engine), which took it
 over 6.25 kB; its budget and the IIFE's were raised to 6.5 kB, and `child/lite` got a
 tight 4.25 kB of its own.
+The `'timeout'` status (see [Behaviour](#behaviour)) put `child/react` 2 bytes over, and
+its budget was raised to 7.3 kB. The parent hooks absorbed it: making every
+`useIframeResize` warning dev-only took 0.4 kB out of every parent scenario.
+
+## Host without React
+
+The parent hooks cover a React host. The white-label case is the opposite: the widget
+vendor ships a script, and it runs on customers' sites, which are rarely React apps
+(pretix, Tito, Calendly and Stripe all embed this way). Without a non-React host, a
+vendor using this library for its widget would still have to write the host side of the
+protocol itself. The same holds for moving off iframe-resizer, whose host script is plain
+JavaScript. So `react-iframe-kit/host` exposes the parent connection directly:
+
+```ts
+import { connectToIframe } from 'react-iframe-kit/host';
+
+const widget = connectToIframe<WidgetSide, HostSide>(iframe, {
+  origin: 'https://tickets.example.com', // optional: derived from src otherwise
+  methods: { getToken },
+  resize: { maxHeight: 2000 },           // true: height only
+  syncTitle: true,                       // iframe's title attribute = the page's title
+  onStatusChange(status) {},             // 'connecting' | 'connected' | 'timeout'
+  onResize(size) {},
+});
+await widget.remote.setTheme('dark');
+widget.on('orderCompleted', track);
+widget.setInert(true);
+widget.dispose();
+```
+
+- **The same connection as the hooks.** `connectToIframe` acquires the iframe's shared
+  parent connection (see [Connection sharing](#connection-sharing)) and an RPC handle
+  of its own, so it can sit next to React hooks on the same iframe, and several copies
+  of the library still share one connection.
+- **Callbacks in the options, state in getters** (`status`, `size`, `title`), which is
+  what a loader script needs, and what iframe-resizer users know. Events of the page
+  use `on()`, as on the child.
+- **Imperative error policy:** invalid options throw synchronously, like the child's
+  `connectToParent`.
+- **`status`** has the hooks' `'timeout'` (see [Behaviour](#behaviour)), with the same
+  rules; `watchConnectDeadline` (`src/core/connectDeadline.ts`) is shared with
+  `useIframeRPC`.
+- **Resize follows the page's reports only.** There is no direct measurement of a
+  same-origin document, which `useIframeResize` does: a host page without React embeds
+  pages it doesn't render, and those run `autoResize`. The limits and `axis` work as in
+  the hook, and `onResizeLoop` fires when the page's guard trips.
+- **`syncTitle` sets the attribute itself.** The hook can't (React owns `title`); a plain
+  page has no such owner. The original `title` comes back when the page stops sending
+  one and on `dispose()`.
+- **`setInert`** sets the `inert` attribute (and removes only one it set) and tells the
+  page, as `useIframeInert` does for a cross-origin iframe.
+- Covered by `src/core/connectToIframe.test.ts` (against `mockChild`) and
+  `e2e/host.spec.ts`, which runs a real cross-origin widget under a host page without
+  React, from the sources and from the `<script>` build, in every engine.
+
+## Third-party iframes
+
+Everything above needs the page inside to cooperate (`connectToParent`), except
+portals. Embedding a page you don't control (a map, a video, a partner's app, a payment
+form) leaves the parent with very little, and the library says so rather than pretending:
+
+- **`useIframeLoad(target, { timeout })`** → `'idle' | 'loading' | 'loaded' | 'timeout'`,
+  from the native `load` alone (`src/core/iframeLoad.ts`). It needs nothing inside the
+  iframe and opens no connection.
+  - Already loaded at mount counts: a readable document that is `complete` and isn't
+    the initial `about:blank` of an iframe with a `src`/`srcdoc` on its way, or a
+    cross-origin document (`contentDocument` is `null` while `contentWindow` exists),
+    whose navigation has committed. The latter may still be loading; its `load` then
+    arrives anyway, so the only cost is reporting `loaded` a little early.
+  - `'timeout'` isn't final: a later `load` moves it to `'loaded'`.
+  - For `loading="lazy"`, time counts from when the iframe first intersects the
+    viewport (an `IntersectionObserver`): off screen the browser doesn't load it, and a
+    timer from mount would time out every lazy iframe below the fold. Without
+    `IntersectionObserver`, it falls back to a plain timer.
+  - `loaded` means the browser finished loading *a* document. An error page, or a page
+    that refuses to be framed, may fire `load` too, and a cross-origin parent can't tell
+    the difference. The docs say so; only a handshake (`useIframeRPC`'s status) proves a
+    cooperating page works.
+  - Covered by `src/core/iframeLoad.test.ts` and `e2e/third-party.spec.ts` (a real
+    cross-origin page that knows nothing about the library, a server that never answers,
+    and a lazy iframe far below the fold), in every engine.
+- **Size:** a non-cooperating cross-origin page can't be measured. The guide recommends
+  a fixed size or `aspect-ratio`.
+- **`sandbox`:** every parent connection checks, in development, for `allow-scripts` +
+  `allow-same-origin` on content from the page's own origin, which the framed script can
+  undo, and warns once per iframe (`src/core/sandbox.ts`). The docs have a table of
+  `sandbox`/`allow`/`referrerpolicy` choices per kind of content; presets as code would
+  freeze opinions into the API for little gain.
 
 ## Two modes
 
@@ -175,6 +270,15 @@ class of bug as facebook/react#22847. On every `load`:
 
 The mode is re-evaluated on every `load`, because the iframe may navigate across
 origins.
+
+The document is only read when the iframe's `src` (or `srcdoc`) puts it on the page's
+own origin (`readableFromSrc` in `src/core/origin.ts`). WebKit logs a security error for
+every read of another origin's `contentDocument`, even a caught one, and resize and
+inert re-read on every `load`: a host page with a cross-origin widget got one error per
+load in Safari. A `src` that redirects back to the page's origin is then handled as
+cross-origin, which works as long as the page inside reports its size. The e2e specs for
+cross-origin resize, inert, the host entry and third-party iframes fail on any console
+error (`e2e/console.ts`).
 
 ## Portal mode and the Firefox fix (facebook/react#22847)
 
@@ -314,9 +418,12 @@ Every message is a plain object with a marker that doubles as the protocol versi
 
 - Messages without `rik` are ignored silently, so the library coexists with any other
   postMessage traffic.
-- Messages with an unknown `rik` version are ignored with a dev-mode warning.
+- Messages with any other `rik` value are ignored silently too. The handshake
+  envelope is `rik: 1` forever (see [Versioning](#versioning)), so another value can
+  only come from unrelated traffic that happens to use the same key.
 - Every message is shape-validated (own properties, expected primitive types).
-  Malformed messages are dropped and logged when `debug` is on.
+  Malformed messages are dropped silently: `debug` logging and devtools listeners see
+  the messages that parse, which is what the protocol acted on.
 - Unknown `type`s and unknown fields are ignored. This is what keeps additive
   protocol changes backward compatible.
 
@@ -355,7 +462,13 @@ child                                         parent
     from the back/forward cache).
   - The parent sends `syn` only while it is `connecting`. It sends one **every time it
     enters `connecting`** (creation, `bye`, session loss) and on every iframe
-    `load` while connecting. Its targetOrigin is the expected child origin.
+    `load` while connecting. Its targetOrigin is `'*'`: the prompt carries nothing,
+    and the page's `syn` it prompts is what gets checked (source and origin). It used to
+    be the expected child origin, and then browsers logged "target origin does not
+    match" on every page load, since the connection usually exists while the iframe
+    still holds its initial `about:blank`. Skipping the prompt for that document would
+    mean reading the iframe's `contentDocument`, which WebKit reports as an error once
+    it's cross-origin. `e2e/host.spec.ts` fails on any console error on the host page.
     - The first rule closes a race. After a back/forward cache restore, the
       child's `bye` (on the port) and its new `syn` (on the window) travel through
       different queues, so the `syn` can arrive first. It is then ignored as a
@@ -438,6 +551,38 @@ In all cases the connection stays open.
   stays `rik: 1` forever.
 - Any protocol change needs an update to this file and a compatibility test
   against the previously published `child` build.
+- **Feature detection, when it's needed, is additive too.** If a later release has to
+  know whether the other side supports something (a new port message, say), it adds an
+  optional feature list to `syn`/`ack`. v1 receivers ignore the field, and its absence
+  means "a release from before the list". That's why the list isn't added before it has
+  a first user: it would be frozen with v1 without anything to describe.
+  `protocol.test.ts` → "forward compatibility" pins what makes this safe: known messages
+  with unknown fields still parse, and unknown port types are dropped.
+
+### Stability
+
+Wire protocol v1 is a public contract, not only the one between library releases: a
+page may speak it without the library. The docs page "Integrate without the library"
+(`site/src/content/docs/guides/without-the-library.mdx`) describes it for that reader,
+with a complete host in plain JavaScript.
+
+- Within v1, everything in the tables above keeps its meaning and shape: message types,
+  field names and types, the handshake order, what `instance`, `session` and `bye`
+  mean, and `RIK_METHOD_NOT_FOUND` for a missing method. Changes are additive only
+  ([Versioning](#versioning)).
+- Not part of it: when and how often `size` is sent, the `debug` log format, and
+  anything internal (the registry's shape is a contract between library copies, not
+  for other code).
+- Held by `e2e/manual-host.spec.ts`: the host from the docs page
+  (`e2e/fixtures/connect-widget.js`, no library code, shown on the page from that very
+  file) against the current widget in every engine: the handshake, a late host that has
+  to prompt, size, title, calls, events and errors both ways, reloads and `inert`.
+  `e2e/skew.spec.ts` runs the same host against the last published widget. A change
+  that breaks either breaks hand-written integrations, so it has to be v2, not a
+  patch.
+- The widget side written by hand isn't conformance-tested yet: teams without React
+  are on the host side. It would take a hand-written child fixture against the
+  library's host, the same way.
 
 ## Connection sharing
 
@@ -632,11 +777,27 @@ because calls made before the connection exists must already work.
   are always used (through a ref), without reconnecting. The set of method *names*
   is taken when the hook registers (on mount, or when the iframe element changes);
   a name that later disappears from `methods` answers `RIK_METHOD_NOT_FOUND`.
-- **Status** is `'idle' | 'connecting' | 'connected' | 'error'`:
+- **Status** is `'idle' | 'connecting' | 'connected' | 'timeout' | 'error'`:
   - `idle`: no iframe element yet (parent), not framed, or running on the
     server (child);
   - `connecting`: waiting for the handshake, including after a connection loss;
   - `connected`: the handshake is complete;
+  - `timeout`: still `connecting` after `connectTimeout`. A host needs this to show
+    "the widget didn't load" without a timer of its own (Stripe Connect's `onLoadError`
+    is the same idea). It is not terminal: the status moves on to `connected` if the
+    handshake completes later, and a later connection loss starts a new wait. It
+    reuses `connectTimeout` rather than adding an option: both mean "how long to wait
+    for the connection". The timer is the hook's own (each hook has its own
+    `connectTimeout`); the shared connection still only knows connecting/connected.
+    - Parent: the wait starts when the status enters `connecting` and restarts on every
+      iframe `load` while connecting, so a reloaded page gets its full time. For an
+      iframe with `loading="lazy"` it starts only at `load`: off screen, the iframe
+      hasn't started loading, and counting from mount would report a timeout for every
+      widget below the fold. Queued calls still count `connectTimeout` from the call;
+      the docs say to raise it for lazy iframes called early.
+    - Child: `useParent` only. The imperative handle keeps `idle | connecting |
+      connected` (its users have `whenConnected()` and their own timers), which keeps
+      the `child` entries' budgets.
   - `error`: terminal configuration error. `error` holds the `IframeKitError`
     (`RIK_ORIGIN_CONFLICT`, `RIK_METHOD_CONFLICT` or `RIK_INVALID_OPTIONS`).
   
@@ -645,6 +806,32 @@ because calls made before the connection exists must already work.
   mismatch seen, `sandbox` flags. The warning lives in `useIframeRPC` and
   `useParent`, not in the connection: a same-origin `useIframeResize` never needs
   the handshake, and warning there would be noise.
+
+## Validation
+
+`Side<>` contracts are compile-time only, while everything that crosses the boundary is
+untrusted input from another origin. `react-iframe-kit/validate` checks it at runtime with
+any [Standard Schema](https://standardschema.dev) v1 library (the interface is copied, as
+its spec asks, so there is no dependency):
+
+```ts
+methods: { prefill: validateArgs(z.tuple([Prefill]), (data) => apply(data)) }
+on('orderCompleted', validatePayload(Order, track))
+```
+
+- **Wrappers, not options.** A `validate` option on the hooks and `connectToParent` would
+  have put schema handling in the RPC engine and in every entry's budget (the `child`
+  entry had 0.16 kB left). Wrapping a method or handler costs nothing to those who don't
+  use it, works with every side and entry the same way, and keeps the protocol unchanged.
+- `validateArgs` validates the arguments as a tuple and calls the method with the
+  schema's output (transforms and defaults apply). Invalid arguments throw
+  `RIK_VALIDATION` with `data: { message, path }[]` (paths as strings, so it clones), which
+  the caller receives as a `RemoteError`.
+- `validatePayload` drops an invalid event and reports the error with `reportError`, the
+  same channel as a throwing handler. The handler runs a microtask later than
+  unvalidated ones (schemas may be async).
+- Covered by `src/core/validate.test.ts` and, end to end over the real protocol, in
+  `src/core/connectToIframe.test.ts`.
 
 ## Resize
 
@@ -858,8 +1045,14 @@ site has the table and a guard recipe, to apply only where a library needs it.
   `data:` and `javascript:` URLs have opaque origins, see below.
 - **Child `allowedOrigins` is always required.** The child can't reliably learn its
   parent's origin: Firefox has no `location.ancestorOrigins`.
-  - Entries are exact origin strings (normalized as above) or `RegExp`s. An
-    unanchored `RegExp` (without `^…$`) logs a dev warning.
+  - Entries are exact origin strings (normalized as above), `RegExp`s or predicates
+    `(origin) => boolean`. An unanchored `RegExp` (without `^…$`) logs a dev warning.
+  - A predicate is for multi-tenant embeds, whose allowed hosts come from
+    configuration and change without a release. It is asked on every `ack`, so the
+    answer can change while the page is open. Only a return value of exactly `true`
+    allows: an async predicate returns a `Promise`, which is truthy and would
+    otherwise allow every origin. For "same `allowedOrigins`" across callers (see
+    [Connection sharing](#connection-sharing)), predicates compare by identity.
   - A `RegExp` with the `g` or `y` flag is `RIK_INVALID_OPTIONS`. With those flags,
     `test()` is stateful through `lastIndex`, so the same origin would be allowed
     and rejected on alternate calls.
@@ -954,6 +1147,7 @@ All errors extend `IframeKitError` with a stable `code` and an optional `cause`.
 | `RIK_QUEUE_OVERFLOW` | more than 1,000 messages queued while not connected |
 | `RIK_ORIGIN_CONFLICT` | two users of one iframe passed different origins |
 | `RIK_METHOD_CONFLICT` | two users registered the same method name |
+| `RIK_VALIDATION` | arguments or a payload failed a schema from `react-iframe-kit/validate` (see [Validation](#validation)) |
 | `RIK_INVALID_OPTIONS` | e.g. `'*'` without `unsafeAllowAnyOrigin`, no `allowedOrigins` on the child, `<Frame>` in a sandbox without `allow-same-origin`, a `srcdoc` the host's Trusted Types policy blocks |
 
 ### Error policy
@@ -1054,7 +1248,7 @@ summaries out of its size budget.
   IframeKitError` across copies). It loads `dist/`, so CI builds before the e2e job;
   locally the spec skips, naming the reason, when the build is missing or older than
   `src`.
-- **Version skew** (`e2e/skew.spec.ts`, CI job "Version skew"): the parent from
+- **Version skew** (`e2e/skew.spec.ts`, CI job "Version skew", in all three engines): the parent from
   `main` against the last published `child` build, and vice versa. `pnpm skew:fetch`
   unpacks the latest published build into `e2e/.published`, after checking the
   registry's integrity hash (`SKEW_VERSION` picks another version, `SKEW_TARBALL` a
@@ -1065,7 +1259,22 @@ summaries out of its size budget.
   since it has no protocol; the tests start running with the first release that
   ships one. Against a `pnpm pack` of the current build, both directions pass on all
   three browsers.
-- React 18 and 19 matrix in CI.
+- **Conformance** (`e2e/manual-host.spec.ts`, in every engine): a host written by
+  hand from the protocol docs, with no library code, against the library's widget. See
+  [Stability](#stability). The skew job runs it against the last published widget too.
+- React 18 and 19 matrix in CI: the unit suite on both, and the e2e suite on React 18
+  in Chromium besides the three engines on 19. The React 18 e2e job found an update
+  loop that the unit job couldn't: `useIframeTarget` scheduled a same-value update
+  after every commit, and with several hooks in one StrictMode component React 18
+  kept rendering (`src/react/useIframeTarget.test.tsx` now reproduces it in happy-dom).
+- A `mobile-webkit` Playwright project (iPhone 15 viewport and touch input) runs the
+  embed paths: handshake, cross-origin resize, calls, reloads, `<Frame>` and the
+  sandboxed child.
+- **Examples** (`examples/`, CI job "Example"): each example is installed as users get
+  it, with the library replaced by a `pnpm pack` of the current build, and smoke-tested
+  with Playwright: `examples/nextjs` after `next build` (server components importing
+  the package, the `'use client'` boundaries, the handshake after hydration), and
+  `examples/vanilla-widget` on two origins in all three engines.
 - **Docs site** (`site/`, workflow "Docs"): a Playwright smoke test of the built site
   loads every page with no console errors, drives the live playground, and runs the
   RPC demo both ways.
@@ -1201,6 +1410,12 @@ TypeScript (strict) · tsdown (ESM + CJS + child IIFE, dts, publint + attw check
 Vitest · Playwright · Biome (lint + format) · size-limit · changesets ·
 GitHub Actions · `npm publish --provenance`. Package manager: pnpm.
 
+Supply chain: workflow actions are pinned to commit SHAs (Dependabot updates the pins),
+CodeQL and OpenSSF Scorecard run on `main`, the package has no runtime dependencies and
+no install scripts, and releases go out through npm trusted publishing. The README's
+"Stability, license and supply chain" section is the public version of this, with the
+semver, deprecation and license commitments.
+
 ## Open questions
 
 These can't be settled on paper and need to be resolved by a prototype before v1.
@@ -1264,3 +1479,32 @@ These can't be settled on paper and need to be resolved by a prototype before v1
    - Freeze for v1: the public API, wire protocol v1 and the registry's `/v1` shape
      (both already cross-version contracts, see [Versioning](#versioning) and
      [Package layout](#package-layout)).
+9. **Production readiness** (2026-09-29, from a review of what white-label embeds and
+   third-party iframes need). Done:
+   - Fixes: `useIframeResize` warnings out of the production build (with a package
+     check that fails on dev code there); an update loop with several hooks on one
+     iframe under React 18; a "target origin does not match" console error on every
+     embed; Safari security errors from reading cross-origin documents.
+   - API, before the freeze: `status: 'timeout'`; predicates in `allowedOrigins`;
+     `react-iframe-kit/host` (and its `<script>` build); `useIframeLoad`;
+     `react-iframe-kit/validate`; the `sandbox` development warning.
+   - Tests: e2e on React 18 and mobile WebKit, version skew in every engine, console
+     errors fail the embed specs, forward-compatibility tests for the protocol, and the
+     examples run in CI against the current build.
+   - Wire protocol v1 declared a public contract, documented for hosts that don't use
+     the library, with a hand-written host conformance-tested in every engine and
+     against the last published widget ([Stability](#stability)).
+   - Trust and reach: SHA-pinned actions, CodeQL, OpenSSF Scorecard, Dependabot for the
+     docs site, CDN snippets pinned with SRI on every release, a stability and license
+     policy in the README, the embedding, third-party and migration guides, and
+     `llms.txt`.
+
+   Left, and not code: a second npm owner, GitHub Sponsors, and the launch (see the
+   README's positioning). Deliberately left for demand: protocol primitives for host
+   overlays, scrolling and route sync (recipes first, in the embedding guide), a popup
+   transport, remote-side cancellation (`cancel` is reserved), adapters for other
+   frameworks, and MCP Apps compatibility.
+
+   Known issue: under heavy parallel load in Firefox, `e2e/rpc.spec.ts` occasionally
+   loses the connection shortly after the handshake (about 1 in 80 runs, on `main`
+   before this work too); CI's retries absorb it. Not yet reproduced in isolation.

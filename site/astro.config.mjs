@@ -19,13 +19,19 @@ export default defineConfig({
       social: [{ icon: 'github', label: 'GitHub', href: repo }],
       editLink: { baseUrl: `${repo}/edit/main/site/` },
       sidebar: [
-        { label: 'Start here', items: ['getting-started', 'comparison'] },
+        {
+          label: 'Start here',
+          items: ['getting-started', 'comparison', 'guides/migrate-from-iframe-resizer'],
+        },
         {
           label: 'Guides',
           items: [
             'guides/portal',
             'guides/resize',
             'guides/rpc',
+            'guides/embedding',
+            'guides/without-the-library',
+            'guides/third-party',
             'guides/security',
             'guides/accessibility',
             'guides/testing',
@@ -43,6 +49,7 @@ export default defineConfig({
       alias: [
         { find: /^react-iframe-kit\/child\/react$/, replacement: src('child/react.ts') },
         { find: /^react-iframe-kit\/child$/, replacement: src('child/index.ts') },
+        { find: /^react-iframe-kit\/host$/, replacement: src('host/index.ts') },
         { find: /^react-iframe-kit$/, replacement: src('index.ts') },
       ],
       // ../src resolves `react` from the repo root; the site must use its own copy.

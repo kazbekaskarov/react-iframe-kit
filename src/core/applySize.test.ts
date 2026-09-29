@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { applySize, clamp } from './applySize';
+import { applySize, axesOf, clamp } from './applySize';
 
 afterEach(() => {
   document.body.innerHTML = '';
@@ -11,6 +11,14 @@ function iframe(style = ''): HTMLIFrameElement {
   document.body.append(element);
   return element;
 }
+
+describe('axesOf', () => {
+  it('maps an axis to the dimensions it resizes', () => {
+    expect(axesOf('height')).toEqual({ width: false, height: true });
+    expect(axesOf('width')).toEqual({ width: true, height: false });
+    expect(axesOf('both')).toEqual({ width: true, height: true });
+  });
+});
 
 describe('clamp', () => {
   it('limits a value to [min, max]', () => {

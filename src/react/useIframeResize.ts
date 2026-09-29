@@ -1,14 +1,15 @@
 import { useRef, useState } from 'react';
-import { applySize, clamp, type SizeLimits } from '../core/applySize';
+import { applySize, axesOf, clamp, type ResizeAxis, type SizeLimits } from '../core/applySize';
 import { createLoopGuard, type LoopGuard } from '../core/loopGuard';
 import type { MeasureFn, Measurement, Size } from '../core/measure';
 import { observeSize } from '../core/observeSize';
+import { readableFromSrc } from '../core/origin';
 import { acquireParentConnection } from '../core/parentConnection';
 import type { IframeConnectionOptions } from './connectionOptions';
 import { type IframeTarget, useIframeTarget } from './useIframeTarget';
 import { useIsomorphicLayoutEffect } from './useIsomorphicLayoutEffect';
 
-export type ResizeAxis = 'height' | 'width' | 'both';
+export type { ResizeAxis };
 
 export interface UseIframeResizeOptions extends SizeLimits, IframeConnectionOptions {
   /** Which dimensions follow the content. Default `'height'`. */
@@ -26,11 +27,6 @@ export interface UseIframeResizeOptions extends SizeLimits, IframeConnectionOpti
   /** Replaces the built-in measurement for unusual layouts. Same-origin mode only. */
   measure?: MeasureFn | undefined;
 }
-
-const axesOf = (axis: ResizeAxis) => ({
-  width: axis === 'width' || axis === 'both',
-  height: axis === 'height' || axis === 'both',
-});
 
 /** Sets the iframe's size from a content size, per the current `apply`/`axis`/limits. */
 function applyContentSize(iframe: HTMLIFrameElement, size: Size, options: UseIframeResizeOptions) {
@@ -68,7 +64,8 @@ export function useIframeResize(
     optionsRef.current = options;
   });
 
-  // Dev warnings already shown by this hook instance.
+  // Dev warnings already shown by this hook instance. Every call site is behind
+  // `__DEV__`, so the production build carries none of their text.
   const warned = useRef(new Set<string>());
 
   // The last content size committed for the current iframe, so that changing the
@@ -133,7 +130,7 @@ export function useIframeResize(
       const axis = optionsRef.current.axis ?? 'height';
       const axes = axesOf(axis);
 
-      if (!optionsRef.current.measure) {
+      if (__DEV__ && !optionsRef.current.measure) {
         if (measurement.overflow) {
           warnOnce(
             'overflow',
@@ -161,7 +158,7 @@ export function useIframeResize(
         height = lastLocalSize?.height ?? measurement.height;
       }
       const tripped = localGuards.width.tripped || localGuards.height.tripped;
-      if (tripped && !wasTripped) {
+      if (__DEV__ && tripped && !wasTripped) {
         warnOnce(
           'loop',
           'the iframe content keeps growing with the iframe (content sized from the viewport, e.g. `100vh` or `100%` plus a margin or padding?). Resizing is paused until the content changes.',
@@ -185,6 +182,7 @@ export function useIframeResize(
     // first load every iframe holds an initial about:blank that is readable even
     // when `src` is cross-origin. See docs/design.md → Two modes.
     const readDocument = (): Document | null => {
+      if (!readableFromSrc(iframe)) return null; // cross-origin: the child reports
       let doc: Document | null;
       try {
         doc = iframe.contentDocument;
@@ -230,15 +228,17 @@ export function useIframeResize(
     };
     const unsubscribeSize = connection.onSize(onRemoteSize);
 
-    noSizeTimer = setTimeout(() => {
-      noSizeTimer = undefined;
-      if (!everReceivedRemoteSize && currentDoc === null) {
-        warnOnce(
-          'no-size',
-          "no size has arrived from the iframe. If it's cross-origin, enable `autoResize` in `connectToParent` inside it.",
-        );
-      }
-    }, 5_000);
+    if (__DEV__) {
+      noSizeTimer = setTimeout(() => {
+        noSizeTimer = undefined;
+        if (!everReceivedRemoteSize && currentDoc === null) {
+          warnOnce(
+            'no-size',
+            "no size has arrived from the iframe. If it's cross-origin, enable `autoResize` in `connectToParent` inside it.",
+          );
+        }
+      }, 5_000);
+    }
 
     return () => {
       iframe.removeEventListener('load', onLoad);

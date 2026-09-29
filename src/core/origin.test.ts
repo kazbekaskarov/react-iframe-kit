@@ -7,6 +7,7 @@ import {
   normalizeOriginMatchers,
   OPAQUE,
   originAllowed,
+  readableFromSrc,
   sameOriginMatchers,
   WILDCARD,
 } from './origin';
@@ -137,6 +138,18 @@ describe('originAllowed', () => {
       true,
     );
   });
+
+  it('asks a predicate, and allows only on exactly `true`', () => {
+    const tenants = new Set(['https://shop.example']);
+    const isTenant = (origin: string) => tenants.has(origin);
+    expect(originAllowed('https://shop.example', [isTenant])).toBe(true);
+    expect(originAllowed('https://evil.example', [isTenant])).toBe(false);
+    tenants.add('https://evil.example'); // asked on every handshake, not cached
+    expect(originAllowed('https://evil.example', [isTenant])).toBe(true);
+    // An async predicate returns a (truthy) Promise: that must not allow anything.
+    const asyncPredicate = (async () => true) as unknown as (origin: string) => boolean;
+    expect(originAllowed('https://shop.example', [asyncPredicate])).toBe(false);
+  });
 });
 
 describe('normalizeOriginMatchers', () => {
@@ -148,6 +161,11 @@ describe('normalizeOriginMatchers', () => {
     expect(normalizeOriginMatchers(['https://Example.com/'], undefined)).toEqual([
       'https://example.com',
     ]);
+  });
+
+  it('passes predicates through', () => {
+    const predicate = (origin: string) => origin.endsWith('.example');
+    expect(normalizeOriginMatchers([predicate], undefined)).toEqual([predicate]);
   });
 
   it('passes RegExp entries through', () => {
@@ -188,8 +206,29 @@ describe('sameOriginMatchers', () => {
     expect(sameOriginMatchers(['a'], ['b'])).toBe(false);
   });
 
+  it('compares predicates by identity', () => {
+    const predicate = () => true;
+    expect(sameOriginMatchers([predicate, 'a'], ['a', predicate])).toBe(true);
+    expect(sameOriginMatchers([predicate], [() => true])).toBe(false);
+  });
+
   it('compares RegExp by source and flags', () => {
     expect(sameOriginMatchers([/^a$/i], [/^a$/i])).toBe(true);
     expect(sameOriginMatchers([/^a$/i], [/^a$/])).toBe(false);
+  });
+});
+
+describe('readableFromSrc', () => {
+  it('is true for this origin, srcdoc and no src, false for other and opaque origins', () => {
+    const frame = (attributes: Record<string, string>) => {
+      const iframe = document.createElement('iframe');
+      for (const [name, value] of Object.entries(attributes)) iframe.setAttribute(name, value);
+      return iframe;
+    };
+    expect(readableFromSrc(frame({}))).toBe(true);
+    expect(readableFromSrc(frame({ src: '/page' }))).toBe(true);
+    expect(readableFromSrc(frame({ srcdoc: '<p>x</p>', src: 'https://a.example/' }))).toBe(true);
+    expect(readableFromSrc(frame({ src: 'https://widget.example.com/' }))).toBe(false);
+    expect(readableFromSrc(frame({ src: 'data:text/html,x' }))).toBe(false);
   });
 });

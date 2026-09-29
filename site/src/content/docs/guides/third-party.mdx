@@ -1,0 +1,81 @@
+---
+title: Third-party iframes
+description: Embed pages you don't control (maps, videos, partner apps, payment forms) and know whether they loaded.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Most of react-iframe-kit needs the page inside the iframe to run `connectToParent`. A page
+you don't control won't, and a cross-origin parent can learn very little about it: not
+its size, not its errors, not its title. This guide covers what's still possible.
+
+## Did it load?
+
+`useIframeLoad` needs nothing inside the iframe (*next release*):
+
+```tsx
+import { useIframeLoad } from 'react-iframe-kit';
+
+function Map({ src }: { src: string }) {
+  const [iframe, setIframe] = useState<HTMLIFrameElement | null>(null);
+  const status = useIframeLoad(iframe, { timeout: 15_000 }); // 'idle' | 'loading' | 'loaded' | 'timeout'
+
+  return (
+    <figure>
+      {status === 'loading' && <Spinner />}
+      {status === 'timeout' && <a href={src}>Open the map</a>}
+      <iframe ref={setIframe} title="Venue map" src={src} loading="lazy" />
+    </figure>
+  );
+}
+```
+
+- `'timeout'` isn't final: if the page loads later, `status` moves on to `'loaded'`.
+- With `loading="lazy"`, the time counts from when the iframe scrolls into view, since
+  the browser doesn't load it before. A lazy iframe far below the fold stays
+  `'loading'` without timing out.
+- An iframe that loaded before the hook mounted (for example, before hydration) is
+  reported as `'loaded'` right away.
+
+<Aside type="caution" title="'loaded' is not 'works'">
+  The browser fires `load` for whatever document it ended up with, including an error
+  page, a login wall, or a page that refuses to be framed with `X-Frame-Options` or
+  `frame-ancestors`. A cross-origin parent can't tell those apart. If the page runs
+  `connectToParent`, use `useIframeRPC`'s `status` instead: a completed handshake is the
+  only proof that the page inside works.
+</Aside>
+
+## Size
+
+A cross-origin page that doesn't report its size can't be measured. Give it one:
+
+```css
+iframe.video { width: 100%; aspect-ratio: 16 / 9; border: 0; }
+iframe.map { width: 100%; height: 480px; border: 0; }
+```
+
+If you can ask the vendor for one change, ask for the 4 kB `child-lite.global.js` script
+and `connectToParent({ allowedOrigins, autoResize: true })` on their page. Then
+`useIframeResize` (or `connectToIframe` from `react-iframe-kit/host`) sizes it for you.
+
+## Attributes
+
+For content you don't control, give it as little as it needs:
+
+| Content | `sandbox` | `allow` | Other |
+|---|---|---|---|
+| Video player | `allow-scripts allow-same-origin allow-presentation` | `fullscreen; picture-in-picture; encrypted-media` | `referrerpolicy="strict-origin-when-cross-origin"` |
+| Map | `allow-scripts allow-same-origin allow-popups` | `geolocation`, only if you want it | |
+| Partner app or form | `allow-scripts allow-same-origin allow-forms allow-popups` | only what it documents | `credentialless` (Chromium only) if it must not see the user's cookies |
+| Payment form | **no `sandbox`**: 3-D Secure pages can break in one | `payment` | see [Payments](/react-iframe-kit/guides/embedding/#payments-cookies-and-popups) |
+| Untrusted HTML (user content) | `allow-scripts` only, served from its own origin | none | `origin: 'null'` on the parent if you connect to it |
+
+- `allow-scripts allow-same-origin` together are only safe for content on **another
+  origin**. On your own origin, the framed script can remove the sandbox; react-iframe-kit
+  warns about that in development.
+- `allow-popups-to-escape-sandbox` lets windows the page opens run without the sandbox,
+  which payment and login pages usually need.
+- `referrerpolicy` keeps your page's full URL (and anything in its query string) from
+  reaching the embedded site.
+- `credentialless` loads the page without the user's cookies and storage. It exists only
+  in Chromium; other browsers ignore it and send cookies as usual.

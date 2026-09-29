@@ -22,6 +22,7 @@ import {
 } from './protocol';
 import { getRegistry } from './registry';
 import type { RpcAcquireOptions, RpcEngine, RpcHandle } from './rpc';
+import { warnIneffectiveSandbox } from './sandbox';
 
 export type ConnectionStatus = 'connecting' | 'connected';
 
@@ -183,11 +184,15 @@ class ParentConnectionImpl implements ParentConnection {
   private sendSyn(): void {
     const target = this.iframe.contentWindow;
     if (!target) return;
-    const expected = this.expectedOrigin();
-    const targetOrigin = expected === OPAQUE || expected === WILDCARD ? WILDCARD : expected;
     const message = { rik: RIK, type: 'syn', versions: SUPPORTED_VERSIONS } as const;
     try {
-      target.postMessage(message, targetOrigin);
+      // To any origin: the prompt carries nothing, and what it prompts (the page's own
+      // syn) is checked for source and origin. Aimed at the expected origin instead, it
+      // made browsers log "target origin does not match" whenever the iframe still held
+      // its initial about:blank, which is on every page load. Telling that document
+      // apart first would mean reading another origin's `contentDocument`, which WebKit
+      // reports as an error too. See docs/design.md → Handshake.
+      target.postMessage(message, WILDCARD);
       logProtocolMessage(this.debug, '→', message);
     } catch {
       // A cross-origin-isolated target or similar can make this throw; there is
@@ -395,6 +400,7 @@ export function acquireParentConnection(
   if (!connection) {
     connection = new ParentConnectionImpl(iframe);
     map.set(iframe, connection);
+    warnIneffectiveSandbox(iframe);
   }
   connection.acquire({ origin, debug: options.debug });
   return connection;

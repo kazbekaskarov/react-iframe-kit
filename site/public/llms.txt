@@ -1,0 +1,48 @@
+# react-iframe-kit
+
+> TypeScript library for iframes, MIT: render React into an iframe, size an iframe to its content (same- or cross-origin), and call methods and send events across the boundary with types, over one private MessageChannel per iframe. React hooks for the host page, plus a host API without React and a child API without React (both also as `<script>` builds).
+
+Pick the entry by where the code runs:
+
+- `react-iframe-kit`: the page that owns the `<iframe>`, with React. `<Frame>`, `useFrame`, `useIframe` (portal rendering), `useIframeResize`, `useIframeRPC`, `useIframeEvent`, `useIframeTitle`, `useIframeInert`, `useIframeLoad` (any iframe, no cooperation needed).
+- `react-iframe-kit/host`: the page that owns the `<iframe>`, without React. `connectToIframe(iframe, { resize, methods, syncTitle, onStatusChange, onResize })`. Script build: `dist/host.global.js`, global `ReactIframeKitHost`.
+- `react-iframe-kit/child`: the page inside the iframe, no React needed. `connectToParent({ allowedOrigins, methods, autoResize, syncTitle })`. Script build: `dist/child.global.js`, global `ReactIframeKit`.
+- `react-iframe-kit/child/lite`: the same without RPC and events (resize, title, inert only), 4 kB. Script build: `dist/child-lite.global.js`.
+- `react-iframe-kit/child/react`: `useParent`, `useParentEvent` inside the iframe.
+- `react-iframe-kit/validate`: `validateArgs(schema, method)`, `validatePayload(schema, handler)` with any Standard Schema library (Zod, Valibot, ArkType).
+- `react-iframe-kit/testing`: `mockChild`, `mockParent` for jsdom/happy-dom tests. `react-iframe-kit/devtools`: `connectReduxDevTools`.
+
+Rules that code using it must follow:
+
+- The page inside must call `connectToParent` with `allowedOrigins` (required: exact origins, anchored RegExps, or a `(origin) => boolean` predicate). Without it, the host's hooks stay `'connecting'`, then report `status: 'timeout'` after `connectTimeout` (30 s).
+- The host checks the child's origin, derived from the iframe's `src`; pass `origin` only if `src` redirects. `'*'` requires `unsafeAllowAnyOrigin: true` on either side.
+- Cross-origin resize needs `autoResize: true` inside; the host applies the size (`useIframeResize(ref)` or `connectToIframe(iframe, { resize: true })`). Width needs `html { width: max-content }` inside.
+- Contracts: `type ChildSide = Side<{ methods: {...}; events: {...} }>`. Generic order is always `<Remote, Local>`: `useIframeRPC<ChildSide, ParentSide>(ref, { methods })`, `connectToParent<ParentSide, ChildSide>(...)`. Remote methods return promises; only structured-cloneable data crosses (no functions).
+- Event hooks take the name as a second type argument: `useIframeEvent<ChildSide, 'submitted'>(ref, 'submitted', handler)`.
+- Errors are `IframeKitError` with a `code` (`RIK_TIMEOUT`, `RIK_CONNECTION_LOST`, `RIK_REMOTE_ERROR`, `RIK_VALIDATION`, …). An error thrown by a remote method arrives as `RemoteError` with `cause.code`. Hooks never throw; imperative APIs throw on invalid options.
+- `<Frame>` renders React children into a same-origin `srcdoc` iframe (not a `src` URL), and needs `allow-same-origin` if sandboxed. Always give iframes a `title`.
+
+## Docs
+
+- [Getting started](https://kazbekaskarov.github.io/react-iframe-kit/getting-started/): install, entry points
+- [Portal rendering](https://kazbekaskarov.github.io/react-iframe-kit/guides/portal/): `<Frame>`, `useFrame`, `copyStyles`, CSS-in-JS
+- [Auto-resize](https://kazbekaskarov.github.io/react-iframe-kit/guides/resize/): same- and cross-origin sizing, limits, feedback-loop guard
+- [RPC and events](https://kazbekaskarov.github.io/react-iframe-kit/guides/rpc/): contracts, calls, events, timeouts, validation, title
+- [Embedding a widget](https://kazbekaskarov.github.io/react-iframe-kit/guides/embedding/): white-label widgets on sites without React, loader scripts, tokens, analytics, payments, cookies
+- [Integrate without the library](https://kazbekaskarov.github.io/react-iframe-kit/guides/without-the-library/): wire protocol v1 (stable) for hosts that don't use the library, with a complete plain-JavaScript host tested in CI
+- [Third-party iframes](https://kazbekaskarov.github.io/react-iframe-kit/guides/third-party/): load status, sizing and sandbox/allow for pages you don't control
+- [Security](https://kazbekaskarov.github.io/react-iframe-kit/guides/security/): origins, multi-tenant allowlists, sandbox, CSP, Trusted Types
+- [Accessibility](https://kazbekaskarov.github.io/react-iframe-kit/guides/accessibility/): titles, inert, focus traps
+- [Testing](https://kazbekaskarov.github.io/react-iframe-kit/guides/testing/): `mockChild`, `mockParent`
+- [Migrate from iframe-resizer](https://kazbekaskarov.github.io/react-iframe-kit/guides/migrate-from-iframe-resizer/): option-by-option mapping
+
+## Reference
+
+- [API](https://kazbekaskarov.github.io/react-iframe-kit/reference/api/): every export and option
+- [Errors](https://kazbekaskarov.github.io/react-iframe-kit/reference/errors/): error codes
+- [Design and wire protocol](https://github.com/kazbekaskarov/react-iframe-kit/blob/main/docs/design.md)
+
+## Optional
+
+- [Comparison](https://kazbekaskarov.github.io/react-iframe-kit/comparison/): react-frame-component, iframe-resizer, Penpal, Comlink
+- [Examples](https://github.com/kazbekaskarov/react-iframe-kit/tree/main/examples): Next.js App Router, a vanilla white-label widget

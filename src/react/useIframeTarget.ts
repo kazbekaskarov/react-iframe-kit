@@ -12,9 +12,13 @@ export type IframeTarget = HTMLIFrameElement | null | RefObject<HTMLIFrameElemen
 export function useIframeTarget(target: IframeTarget): HTMLIFrameElement | null {
   const [element, setElement] = useState<HTMLIFrameElement | null>(null);
 
+  // No state update at all when nothing changed. This effect runs after every commit,
+  // and React 18 doesn't always bail out of a same-value update scheduled from a layout
+  // effect: with several of these hooks in one component, each commit scheduled
+  // another, until "Maximum update depth exceeded" (found by the React 18 e2e job).
   useIsomorphicLayoutEffect(() => {
     const next = target && 'current' in target ? target.current : target;
-    setElement((current) => (current === next ? current : next));
+    if (next !== element) setElement(next);
   });
 
   return element;

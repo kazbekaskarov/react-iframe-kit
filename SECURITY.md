@@ -15,7 +15,9 @@ plan within 14 days for confirmed issues.
 
 ## Supported versions
 
-Until 1.0, only the latest published version receives security fixes.
+Until 1.0, only the latest published version receives security fixes. From 1.0, the
+latest major receives them, and the previous major does too for six months after a new
+major is released.
 
 ## Scope
 

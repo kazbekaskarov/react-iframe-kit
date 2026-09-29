@@ -174,6 +174,55 @@ export function mockChildCases(): void {
       next.dispose();
     });
 
+    it("reports 'timeout' after connectTimeout, and 'connected' once the child shows up", async () => {
+      function SlowHost() {
+        const [iframe, setIframe] = useState<HTMLIFrameElement | null>(null);
+        const { status } = useIframeRPC(iframe, { connectTimeout: 30 });
+        return (
+          <>
+            <output data-testid="status">{status}</output>
+            <iframe ref={setIframe} title="Widget" src={SRC} />
+          </>
+        );
+      }
+      render(<SlowHost />);
+      expect(screen.getByTestId('status').textContent).toBe('connecting');
+      await waitFor(() => expect(screen.getByTestId('status').textContent).toBe('timeout'));
+
+      const child = mockChild(iframeElement());
+      await waitFor(() => expect(screen.getByTestId('status').textContent).toBe('connected'));
+      // A lost connection gets its full time again.
+      act(() => child.dispose());
+      await waitFor(() => expect(screen.getByTestId('status').textContent).toBe('connecting'));
+      await waitFor(() => expect(screen.getByTestId('status').textContent).toBe('timeout'));
+    });
+
+    it("counts a lazy iframe's time from its load, and never times out with Infinity", async () => {
+      // Detached, so nothing loads it but the test (a lazy iframe off screen).
+      const iframe = document.createElement('iframe');
+      iframe.loading = 'lazy';
+      iframe.src = SRC;
+      function LazyHost({ connectTimeout }: { connectTimeout: number }) {
+        const { status } = useIframeRPC(iframe, { connectTimeout });
+        return <output data-testid="status">{status}</output>;
+      }
+      render(<LazyHost connectTimeout={30} />);
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      expect(screen.getByTestId('status').textContent).toBe('connecting');
+      act(() => {
+        iframe.dispatchEvent(new Event('load'));
+      });
+      await waitFor(() => expect(screen.getByTestId('status').textContent).toBe('timeout'));
+      cleanup();
+
+      render(<LazyHost connectTimeout={Infinity} />);
+      act(() => {
+        iframe.dispatchEvent(new Event('load'));
+      });
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      expect(screen.getByTestId('status').textContent).toBe('connecting');
+    });
+
     it('rejects whenConnected when disposed before connecting', async () => {
       const iframe = document.createElement('iframe');
       document.body.append(iframe);

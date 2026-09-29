@@ -1,0 +1,250 @@
+---
+title: Embedding a widget
+description: Build a white-label widget, such as ticketing or checkout, that customers embed on their own sites, React or not.
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+This guide is for the white-label case: you build a widget (a ticket shop, a checkout,
+a booking form, a dashboard), and many customers embed it on their own sites. You
+control the page inside the iframe, but not the page around it, and most of those pages
+aren't React apps.
+
+<Aside>
+  `react-iframe-kit/host` and its `<script>` build ship with the *next release*.
+</Aside>
+
+## The widget page
+
+The widget connects to whichever customer embeds it. Allow the customers' origins with a
+predicate, so the list can come from your configuration
+([Multi-tenant embeds](/react-iframe-kit/guides/security/#multi-tenant-embeds)):
+
+```ts
+// shared/contract.ts: both sides import the types
+import type { Side } from 'react-iframe-kit/host';
+
+export type HostSide = Side<{
+  methods: {
+    getToken(): string;                     // a short-lived session token
+    openOverlay(url: string): void;         // the host shows a full-page modal
+  };
+  events: { themeChanged: Theme };
+}>;
+
+export type WidgetSide = Side<{
+  methods: { setTheme(theme: Theme): void; prefill(data: Prefill): boolean };
+  events: {
+    ready: undefined;
+    checkoutStarted: { eventId: string };
+    orderCompleted: { orderId: string; total: number; currency: string };
+    closed: undefined;
+  };
+}>;
+```
+
+```ts
+// the widget, https://tickets.example.com/embed/:tenant
+import { connectToParent } from 'react-iframe-kit/child';
+
+const tenant = await fetchTenant(location.pathname);
+
+const host = connectToParent<HostSide, WidgetSide>({
+  allowedOrigins: [(origin) => tenant.origins.includes(origin)],
+  autoResize: true,
+  syncTitle: true,
+  methods: {
+    setTheme: applyTheme,
+    prefill: (data) => (checkoutStarted ? false : (applyPrefill(data), true)),
+  },
+});
+
+const token = await host.remote.getToken();
+host.emit('orderCompleted', { orderId, total, currency });
+```
+
+With React inside the widget, use `useParent` from `react-iframe-kit/child/react`
+instead; it returns `status: 'timeout'` when nobody completes the handshake, for
+example when the page is opened directly or framed by a site that doesn't run your
+loader. Show a normal, full-page version of the widget then.
+
+## The host page
+
+Pick what fits the customer's site. All three speak the same protocol, so the widget
+doesn't care.
+
+<Tabs syncKey="host">
+  <TabItem label="Script tag">
+
+For sites without a build step: one pinned script, no bundler.
+
+```html
+<iframe id="tickets" title="Tickets" src="https://tickets.example.com/embed/acme"
+  allow="payment" style="width: 100%; border: 0"></iframe>
+<script src="https://cdn.jsdelivr.net/npm/react-iframe-kit/dist/host.global.js"></script>
+<script>
+  const widget = ReactIframeKitHost.connectToIframe(document.getElementById('tickets'), {
+    resize: true,
+    syncTitle: true,
+    methods: { getToken: () => fetch('/api/ticket-token').then((r) => r.text()) },
+  });
+  widget.on('orderCompleted', (order) => gtag('event', 'purchase', order));
+</script>
+```
+
+  </TabItem>
+  <TabItem label="Plain JavaScript">
+
+For sites with a bundler but without React: the same API from npm.
+
+```ts
+import { connectToIframe } from 'react-iframe-kit/host';
+
+const widget = connectToIframe<WidgetSide, HostSide>(iframe, {
+  resize: { maxHeight: 4000 },
+  syncTitle: true,
+  methods: { getToken, openOverlay },
+  onStatusChange(status) {
+    if (status === 'timeout') showFallbackLink();
+  },
+});
+widget.on('orderCompleted', trackPurchase);
+widget.dispose(); // when the widget is removed
+```
+
+  </TabItem>
+  <TabItem label="React">
+
+```tsx
+import { useIframeEvent, useIframeResize, useIframeRPC, useIframeTitle } from 'react-iframe-kit';
+
+function Tickets({ tenant }: { tenant: string }) {
+  const ref = useRef<HTMLIFrameElement>(null);
+  const { status } = useIframeRPC<WidgetSide, HostSide>(ref, { methods: { getToken, openOverlay } });
+  useIframeResize(ref, { maxHeight: 4000 });
+  useIframeEvent<WidgetSide, 'orderCompleted'>(ref, 'orderCompleted', trackPurchase);
+  const title = useIframeTitle(ref);
+
+  if (status === 'timeout') return <a href={widgetUrl(tenant)}>Buy tickets</a>;
+  return <iframe ref={ref} title={title ?? 'Tickets'} src={widgetUrl(tenant)} allow="payment" />;
+}
+```
+
+  </TabItem>
+</Tabs>
+
+`connectToIframe` takes the same connection options as the hooks (`origin`, `debug`,
+`timeout`, `connectTimeout`) and returns `status`, `size`, `title`, `remote`, `emit`,
+`on`, `setInert()`, `whenConnected()` and `dispose()`. See the
+[API reference](/react-iframe-kit/reference/api/#react-iframe-kithost).
+
+A customer who can't add any script of yours can speak the protocol directly: it's
+plain `postMessage` and a `MessageChannel`, documented and kept stable, with a complete
+host in plain JavaScript in
+[Integrate without the library](/react-iframe-kit/guides/without-the-library/).
+
+## A loader script
+
+Most widget vendors hand customers one snippet, not an API: an async script plus an
+element that marks where the widget goes. The loader creates the iframe and connects to
+it, and a small queue lets the customer's code call the widget before the script has
+loaded. This is the pattern pretix, Tito and Calendly use; here it is on top of
+`react-iframe-kit/host`, bundled into your `loader.js`:
+
+```ts
+// loader.ts → https://tickets.example.com/loader.js
+import { connectToIframe, type IframeHandle } from 'react-iframe-kit/host';
+
+type Command = [method: 'on' | 'prefill', ...args: unknown[]];
+const widgets: IframeHandle<WidgetSide, HostSide>[] = [];
+
+function mount(element: HTMLElement) {
+  const iframe = document.createElement('iframe');
+  iframe.src = `https://tickets.example.com/embed/${element.dataset.tenant}`;
+  iframe.title = element.dataset.title ?? 'Tickets';
+  iframe.allow = 'payment';
+  iframe.loading = 'lazy';
+  iframe.style.cssText = 'width: 100%; border: 0; display: block';
+  element.replaceChildren(iframe);
+  widgets.push(connectToIframe(iframe, { resize: true, syncTitle: true, methods: { getToken } }));
+}
+
+function run([method, ...args]: Command) {
+  for (const widget of widgets) {
+    if (method === 'on') widget.on(args[0] as never, args[1] as never);
+    else void widget.remote.prefill(args[0] as never);
+  }
+}
+
+// Every <div data-tickets> on the page, including ones added later.
+document.querySelectorAll<HTMLElement>('[data-tickets]').forEach(mount);
+
+// Commands queued before this script loaded, then direct calls.
+const queued: Command[] = (window as any).tickets?.q ?? [];
+(window as any).tickets = (...command: Command) => run(command);
+queued.forEach(run);
+```
+
+What the customer pastes:
+
+```html
+<div data-tickets data-tenant="acme"></div>
+<script>
+  window.tickets = window.tickets || function () { (tickets.q = tickets.q || []).push(arguments) };
+  tickets('on', 'orderCompleted', (order) => gtag('event', 'purchase', order));
+</script>
+<script async src="https://tickets.example.com/loader.js"></script>
+```
+
+Version the loader URL (`/v1/loader.js`), because customers copy it once and never
+update it. The wire protocol already copes with the loader and the widget being on
+different releases (see [Versioning](https://github.com/kazbekaskarov/react-iframe-kit/blob/main/docs/design.md#versioning)).
+A complete, runnable version is in
+[`examples/vanilla-widget`](https://github.com/kazbekaskarov/react-iframe-kit/tree/main/examples/vanilla-widget).
+
+## What to put in the contract
+
+What a checkout-style widget usually needs, as methods and events:
+
+| Need | How | Notes |
+|---|---|---|
+| Branding | `setTheme(theme)` from the host, or the theme in the `src` URL | Pass CSS variable values, not CSS: the widget decides what they apply to. Send it again on `'connected'`: a reloaded widget starts over. |
+| Prefill (email, promo code) | `prefill(data)` returning `boolean` | Refuse once checkout has started, like pretix does, so the host can tell. |
+| Auth | `getToken()` on the host, called by the widget | Short-lived tokens, fetched again when one expires. The port is private to the two pages, so the token doesn't cross `window.postMessage`. |
+| Analytics | events such as `checkoutStarted`, `orderCompleted` | The host forwards them to its own GA4/GTM/pixel. Keep personal data out of the payload: the customer's scripts see it. |
+| Full-page modals | `openOverlay(url)` on the host | Content can't leave an iframe; let the host draw the overlay, or open a new tab. |
+| Load failure | `status === 'timeout'` | Show a link to the widget's own page instead of a spinner. |
+| Size | `autoResize` in the widget, `resize` on the host | Set `maxHeight` on hosts you don't trust. |
+
+Validate every argument the widget receives: see
+[Validating what arrives](/react-iframe-kit/guides/rpc/#validating-what-arrives).
+
+## Payments, cookies and popups
+
+These limits come from browsers and payment providers; no protocol can remove them.
+
+- **`allow="payment"`** is needed for the Payment Request API, Apple Pay and Google Pay
+  inside a cross-origin iframe, on every iframe between the top page and the widget.
+  Apple Pay in a cross-origin iframe needs Safari 17 or later, and with Stripe every
+  customer domain has to be registered as a
+  [payment method domain](https://docs.stripe.com/payments/payment-methods/pmd-registration).
+- **No `sandbox` on a widget that runs 3-D Secure.** Stripe warns that some issuers'
+  challenge pages fail inside a sandboxed frame, and advises against nesting embedded
+  Checkout in another iframe.
+- **Popups and COOP.** A host page sent with `Cross-Origin-Opener-Policy: same-origin`
+  breaks payment popups (PayPal, some bank authentication) opened from the widget.
+  Detect it and fall back to a new tab, the way pretix does, or ask customers to use
+  `same-origin-allow-popups`.
+- **Cookies.** Safari and Firefox block or partition third-party cookies; Chrome still
+  allows them outside Incognito, but don't build on that. Keep the widget's session in a
+  cookie with `SameSite=None; Secure; Partitioned` ([CHIPS](https://developer.mozilla.org/en-US/docs/Web/Privacy/Guides/Privacy_sandbox/Partitioned_cookies)),
+  or get a token from the host over the connection (`getToken` above). For a login the
+  customer's site doesn't handle, open your own login page in a popup or a new tab; the
+  [Storage Access API](https://developer.mozilla.org/en-US/docs/Web/API/Storage_Access_API)
+  can give an iframe its cookies back after a user gesture.
+- **Passkeys.** Signing in with a passkey works in cross-origin iframes (with
+  `allow="publickey-credentials-get"`), but Safari can't *create* one there yet: do
+  registration in a top-level window.
+- **Clickjacking.** Only `frame-ancestors` on the widget's responses decides which sites
+  may frame a checkout; compute it per tenant
+  ([Security](/react-iframe-kit/guides/security/#multi-tenant-embeds)).

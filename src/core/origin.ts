@@ -3,7 +3,12 @@
  */
 import { IframeKitError } from './errors';
 
-export type OriginMatcher = string | RegExp;
+/**
+ * An exact origin, a `RegExp` tested against the origin, or a predicate. A predicate
+ * allows an origin only when it returns exactly `true`, so an async one (a `Promise`)
+ * allows nothing. See docs/design.md → Security.
+ */
+export type OriginMatcher = string | RegExp | ((origin: string) => boolean);
 
 /** A wildcard requires an explicit `unsafeAllowAnyOrigin: true` opt-in. */
 export const WILDCARD = '*';
@@ -69,10 +74,24 @@ export function deriveExpectedOrigin(iframe: HTMLIFrameElement): string {
   }
 }
 
+/**
+ * Whether the iframe's `src` (or `srcdoc`) puts its document on this page's origin, so
+ * reading `contentDocument` is worth trying. For another origin it isn't: WebKit logs a
+ * security error for the attempt, even when it's caught. (A `src` that redirects back
+ * to this origin is missed, and falls back to what the page inside reports.)
+ */
+export function readableFromSrc(iframe: HTMLIFrameElement): boolean {
+  return deriveExpectedOrigin(iframe) === location.origin;
+}
+
 /** Whether `actual` (a `MessageEvent.origin`) satisfies one of `matchers`. */
 export function originAllowed(actual: string, matchers: readonly OriginMatcher[]): boolean {
   return matchers.some((matcher) =>
-    typeof matcher === 'string' ? matcher === WILDCARD || matcher === actual : matcher.test(actual),
+    typeof matcher === 'string'
+      ? matcher === WILDCARD || matcher === actual
+      : typeof matcher === 'function'
+        ? matcher(actual) === true
+        : matcher.test(actual),
   );
 }
 
@@ -93,6 +112,7 @@ export function normalizeOriginMatchers(
     );
   }
   return matchers.map((matcher) => {
+    if (typeof matcher === 'function') return matcher;
     if (typeof matcher !== 'string') {
       if (matcher.flags.includes('g') || matcher.flags.includes('y')) {
         throw new IframeKitError(
@@ -112,13 +132,17 @@ export function normalizeOriginMatchers(
   });
 }
 
-/** Whether two origin-matcher lists are equal as sets, order aside. */
+/**
+ * Whether two origin-matcher lists are equal as sets, order aside. Predicates are
+ * equal only to themselves: two callers must pass the same function.
+ */
 export function sameOriginMatchers(
   a: readonly OriginMatcher[],
   b: readonly OriginMatcher[],
 ): boolean {
   if (a.length !== b.length) return false;
-  const key = (m: OriginMatcher) => (typeof m === 'string' ? `s:${m}` : `r:${m.source}:${m.flags}`);
+  const key = (m: OriginMatcher) =>
+    typeof m === 'string' ? `s:${m}` : typeof m === 'function' ? m : `r:${m.source}:${m.flags}`;
   const bKeys = new Set(b.map(key));
   return a.every((m) => bKeys.has(key(m)));
 }
