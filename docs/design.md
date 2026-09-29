@@ -111,17 +111,17 @@ Size budgets (min+gzip, React excluded, enforced by size-limit per import scenar
 | Scenario | Budget | Measured |
 |---|---|---|
 | `useIframe` only | ≤ 1.5 kB | 1.25 kB |
-| `useIframeResize` only (pulls in the handshake/connection, not RPC) | ≤ 5 kB | 4.96 kB |
-| `<Frame>` (portal + resize + copyStyles) | ≤ 6.75 kB | 6.55 kB |
-| `useIframeRPC` + `useIframeEvent` | ≤ 6.5 kB | 6.15 kB |
-| entire parent entry | ≤ 10.5 kB | 10.12 kB |
-| `child` entry (`connectToParent` with RPC + `autoResize` + `syncTitle` + inert) | ≤ 6.5 kB | 6.32 kB |
-| `child/lite` entry (the same without RPC and events) | ≤ 4.25 kB | 4.18 kB |
-| `child/react` entry (`useParent`, `useParentEvent`) | ≤ 7.3 kB | 7.25 kB |
-| `child` IIFE | ≤ 6.5 kB | 6.32 kB |
-| `child/lite` IIFE | ≤ 4.25 kB | 4.16 kB |
-| `host` entry (`connectToIframe`, with RPC) | ≤ 6.25 kB | 5.97 kB |
-| `host` IIFE | ≤ 6.25 kB | 5.99 kB |
+| `useIframeResize` only (pulls in the handshake/connection, not RPC) | ≤ 5 kB | 4.53 kB |
+| `<Frame>` (portal + resize + copyStyles) | ≤ 6.75 kB | 6.13 kB |
+| `useIframeRPC` + `useIframeEvent` | ≤ 6.5 kB | 6.27 kB |
+| entire parent entry | ≤ 10.5 kB | 10.08 kB |
+| `child` entry (`connectToParent` with RPC + `autoResize` + `syncTitle` + inert) | ≤ 6.5 kB | 6.35 kB |
+| `child/lite` entry (the same without RPC and events) | ≤ 4.25 kB | 4.21 kB |
+| `child/react` entry (`useParent`, `useParentEvent`) | ≤ 7.3 kB | 7.27 kB |
+| `child` IIFE | ≤ 6.5 kB | 6.33 kB |
+| `child/lite` IIFE | ≤ 4.25 kB | 4.18 kB |
+| `host` entry (`connectToIframe`, with RPC) | ≤ 6.25 kB | 5.96 kB |
+| `host` IIFE | ≤ 6.25 kB | 5.97 kB |
 | `validate` entry | ≤ 1 kB | 0.68 kB |
 | `devtools` entry | ≤ 1 kB | 0.72 kB |
 
@@ -1451,3 +1451,29 @@ These can't be settled on paper and need to be resolved by a prototype before v1
    - Freeze for v1: the public API, wire protocol v1 and the registry's `/v1` shape
      (both already cross-version contracts, see [Versioning](#versioning) and
      [Package layout](#package-layout)).
+9. **Production readiness** (2026-09-29, from a review of what white-label embeds and
+   third-party iframes need). Done:
+   - Fixes: `useIframeResize` warnings out of the production build (with a package
+     check that fails on dev code there); an update loop with several hooks on one
+     iframe under React 18; a "target origin does not match" console error on every
+     embed; Safari security errors from reading cross-origin documents.
+   - API, before the freeze: `status: 'timeout'`; predicates in `allowedOrigins`;
+     `react-iframe-kit/host` (and its `<script>` build); `useIframeLoad`;
+     `react-iframe-kit/validate`; the `sandbox` development warning.
+   - Tests: e2e on React 18 and mobile WebKit, version skew in every engine, console
+     errors fail the embed specs, forward-compatibility tests for the protocol, and the
+     examples run in CI against the current build.
+   - Trust and reach: SHA-pinned actions, CodeQL, OpenSSF Scorecard, Dependabot for the
+     docs site, CDN snippets pinned with SRI on every release, a stability and license
+     policy in the README, the embedding, third-party and migration guides, and
+     `llms.txt`.
+
+   Left, and not code: a second npm owner, GitHub Sponsors, and the launch (see the
+   README's positioning). Deliberately left for demand: protocol primitives for host
+   overlays, scrolling and route sync (recipes first, in the embedding guide), a popup
+   transport, remote-side cancellation (`cancel` is reserved), adapters for other
+   frameworks, and MCP Apps compatibility.
+
+   Known issue: under heavy parallel load in Firefox, `e2e/rpc.spec.ts` occasionally
+   loses the connection shortly after the handshake (about 1 in 80 runs, on `main`
+   before this work too); CI's retries absorb it. Not yet reproduced in isolation.

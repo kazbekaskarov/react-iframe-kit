@@ -185,16 +185,19 @@ Minified and gzipped, React excluded, enforced in CI. You pay only for what you 
 | What you import | Size |
 |---|---|
 | `useIframe` | 1.3 kB |
-| `useIframeResize` | 5 kB |
-| `<Frame>` with resize and `copyStyles` | 6.6 kB |
+| `useIframeResize` | 4.5 kB |
+| `<Frame>` with resize and `copyStyles` | 6.1 kB |
 | `child/lite` (resize, title, inert) | 4.2 kB |
-| `child` (with RPC and events) | 6.3 kB |
+| `child` (with RPC and events) | 6.4 kB |
+| `host` (`connectToIframe`, without React) | 6 kB |
+| `validate` | 0.7 kB |
 
 ## Support
 
 - React 18 and 19.
 - The last two versions of Chrome, Edge and Firefox, and Safari 15.4+. Every change is
-  tested in Chromium, Firefox and WebKit.
+  tested in Chromium, Firefox, WebKit and mobile WebKit, on React 18 and 19, and against
+  the last published release.
 
 ## Stability, license and supply chain
 
@@ -215,6 +218,11 @@ Minified and gzipped, React excluded, enforced in CI. You pay only for what you 
   tarball to the commit and workflow that built it. Workflow actions are pinned to
   commit SHAs; CodeQL and OpenSSF Scorecard run on every change to `main`.
 - **Security fixes** are acknowledged within 72 hours; see [SECURITY.md](SECURITY.md).
+
+## For AI assistants
+
+[`llms.txt`](https://kazbekaskarov.github.io/react-iframe-kit/llms.txt) sums up the entry
+points, the rules code using the library has to follow, and links to every guide.
 
 ## Contributing
 
