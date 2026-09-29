@@ -26,6 +26,7 @@ export default defineConfig({
             'guides/portal',
             'guides/resize',
             'guides/rpc',
+            'guides/embedding',
             'guides/security',
             'guides/accessibility',
             'guides/testing',
@@ -43,6 +44,7 @@ export default defineConfig({
       alias: [
         { find: /^react-iframe-kit\/child\/react$/, replacement: src('child/react.ts') },
         { find: /^react-iframe-kit\/child$/, replacement: src('child/index.ts') },
+        { find: /^react-iframe-kit\/host$/, replacement: src('host/index.ts') },
         { find: /^react-iframe-kit$/, replacement: src('index.ts') },
       ],
       // ../src resolves `react` from the repo root; the site must use its own copy.

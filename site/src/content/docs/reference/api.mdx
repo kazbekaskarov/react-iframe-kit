@@ -1,6 +1,6 @@
 ---
 title: API
-description: Every export of react-iframe-kit, react-iframe-kit/child and react-iframe-kit/child/react.
+description: Every export of react-iframe-kit, react-iframe-kit/host, react-iframe-kit/child and react-iframe-kit/child/react.
 ---
 
 ## `react-iframe-kit`
@@ -39,8 +39,35 @@ connection options (`IframeConnectionOptions`): `origin`, `unsafeAllowAnyOrigin`
 | `unsafeAllowAnyOrigin` | `false` | Required to pass `origin: '*'`. |
 | `methods` | | Methods the iframe may call. The latest ones are always used. |
 | `timeout` | `10_000` | Per call, from send to result; `Infinity` allowed. |
-| `connectTimeout` | `30_000` | How long a call may wait for the connection; `Infinity` allowed. |
+| `connectTimeout` | `30_000` | How long to wait for the connection: queued calls reject, and `status` becomes `'timeout'`, after this long; `Infinity` allowed. |
 | `debug` | `false` | Log all protocol traffic. |
+
+## `react-iframe-kit/host`
+
+The page that owns the `<iframe>`, without React: a widget's loader script, a site that
+isn't a React app. Also available as a `<script>` (`dist/host.global.js`, global
+`ReactIframeKitHost`). *Next release.*
+
+| Export | Signature | Guide |
+|---|---|---|
+| `connectToIframe` | `<Remote, Local>(iframe, options?) => IframeHandle` | [Embedding a widget](/react-iframe-kit/guides/embedding/) |
+| `withOptions`, `transfer` | as above | |
+| `IframeKitError`, `RemoteError`, `TimeoutError`, `isIframeKitError` | | |
+
+| Option | Default | |
+|---|---|---|
+| `origin`, `unsafeAllowAnyOrigin`, `debug` | | As for the hooks. |
+| `methods`, `timeout`, `connectTimeout` | | As for `useIframeRPC`. |
+| `resize` | off | `true` sizes the height to the page's reports; or `{ axis, minWidth, maxWidth, minHeight, maxHeight }`. |
+| `syncTitle` | `false` | Sets the iframe's `title` attribute to the page's title, and restores the original after. |
+| `onStatusChange` | | `(status: 'connecting' \| 'connected' \| 'timeout') => void`, on every change. |
+| `onResize` | | `(size) => void`, for every size the page reports. |
+| `onResizeLoop` | | Called when the page's feedback-loop guard starts holding growth. |
+
+`IframeHandle`: `status`, `size` (`{ width, height } | null`), `title` (`string | null`),
+`remote`, `emit(name, payload?)`, `on(name, handler) => off`, `setInert(inert)`,
+`whenConnected()`, `dispose()`. It shares the iframe's connection with any hooks on the
+same iframe. Invalid options throw, as with `connectToParent`.
 
 ## `react-iframe-kit/child`
 

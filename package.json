@@ -10,7 +10,10 @@
     "postmessage",
     "rpc",
     "hooks",
-    "micro-frontends"
+    "micro-frontends",
+    "iframe-resizer",
+    "embed",
+    "widget"
   ],
   "license": "MIT",
   "author": "Kazbek Askarov",
@@ -109,6 +112,26 @@
         "default": "./dist/child/react.cjs"
       }
     },
+    "./host": {
+      "development": {
+        "import": {
+          "types": "./dist/host/index.d.ts",
+          "default": "./dist/dev/host/index.js"
+        },
+        "require": {
+          "types": "./dist/host/index.d.cts",
+          "default": "./dist/dev/host/index.cjs"
+        }
+      },
+      "import": {
+        "types": "./dist/host/index.d.ts",
+        "default": "./dist/host/index.js"
+      },
+      "require": {
+        "types": "./dist/host/index.d.cts",
+        "default": "./dist/host/index.cjs"
+      }
+    },
     "./devtools": {
       "development": {
         "import": {
@@ -164,6 +187,9 @@
       ],
       "devtools": [
         "./dist/devtools/index.d.cts"
+      ],
+      "host": [
+        "./dist/host/index.d.cts"
       ],
       "testing": [
         "./dist/testing/index.d.cts"

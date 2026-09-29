@@ -74,6 +74,19 @@
     "gzip": true
   },
   {
+    "name": "host entry (connectToIframe)",
+    "path": "dist/host/index.js",
+    "import": "*",
+    "limit": "6.25 kB",
+    "gzip": true
+  },
+  {
+    "name": "host IIFE (<script> build)",
+    "path": "dist/host.global.js",
+    "limit": "6.25 kB",
+    "gzip": true
+  },
+  {
     "name": "devtools entry (onProtocolMessage, connectReduxDevTools)",
     "path": "dist/devtools/index.js",
     "import": "*",

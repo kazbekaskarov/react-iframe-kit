@@ -51,12 +51,15 @@ One npm package, subpath exports:
 | `react-iframe-kit/child` | iframe | no | `connectToParent`, `transfer`, `withOptions`, errors, types |
 | `react-iframe-kit/child/lite` | iframe | no | `connectToParent` without RPC and events (`autoResize`, `syncTitle`, inert), `IframeKitError`, `isIframeKitError`, types |
 | `react-iframe-kit/child/react` | iframe | yes | `useParent`, `useParentEvent` |
+| `react-iframe-kit/host` | parent | no | `connectToIframe`, `transfer`, `withOptions`, errors, types, see [Host without React](#host-without-react) |
 | `react-iframe-kit/testing` | tests (jsdom, happy-dom) | no | `mockChild`, `mockParent`, see [Testing utilities](#testing-utilities) |
 | `react-iframe-kit/devtools` | either page, in development | no | `onProtocolMessage`, `connectReduxDevTools`, `summarizeProtocolMessage`, see [Devtools](#devtools) |
 
 The `child` entry also ships as an IIFE build (`dist/child.global.js`, global
 `ReactIframeKit`) for embedded pages that don't use a bundler (served via
 jsDelivr/unpkg), and so does `child/lite` (`dist/child-lite.global.js`, same global).
+`host` has one too (`dist/host.global.js`), under its own global `ReactIframeKitHost`, so
+that a page which is both (a host inside someone else's iframe) can load both scripts.
 
 `child/lite` is for embedded pages that only need to be sized, titled and made inert:
 its `connectToParent` has the same options minus `methods`/`timeout`/
@@ -116,6 +119,8 @@ Size budgets (min+gzip, React excluded, enforced by size-limit per import scenar
 | `child/react` entry (`useParent`, `useParentEvent`) | ≤ 7.3 kB | 7.25 kB |
 | `child` IIFE | ≤ 6.5 kB | 6.32 kB |
 | `child/lite` IIFE | ≤ 4.25 kB | 4.16 kB |
+| `host` entry (`connectToIframe`, with RPC) | ≤ 6.25 kB | 5.97 kB |
+| `host` IIFE | ≤ 6.25 kB | 5.99 kB |
 | `devtools` entry | ≤ 1 kB | 0.72 kB |
 
 The [Devtools](#devtools) listener check in the shared message path costs every entry
@@ -157,6 +162,57 @@ tight 4.25 kB of its own.
 The `'timeout'` status (see [Behaviour](#behaviour)) put `child/react` 2 bytes over, and
 its budget was raised to 7.3 kB. The parent hooks absorbed it: making every
 `useIframeResize` warning dev-only took 0.4 kB out of every parent scenario.
+
+## Host without React
+
+The parent hooks cover a React host. The white-label case is the opposite: the widget
+vendor ships a script, and it runs on customers' sites, which are rarely React apps
+(pretix, Tito, Calendly and Stripe all embed this way). Without a non-React host, a
+vendor using this library for its widget would still have to write the host side of the
+protocol itself. The same holds for moving off iframe-resizer, whose host script is plain
+JavaScript. So `react-iframe-kit/host` exposes the parent connection directly:
+
+```ts
+import { connectToIframe } from 'react-iframe-kit/host';
+
+const widget = connectToIframe<WidgetSide, HostSide>(iframe, {
+  origin: 'https://tickets.example.com', // optional: derived from src otherwise
+  methods: { getToken },
+  resize: { maxHeight: 2000 },           // true: height only
+  syncTitle: true,                       // iframe's title attribute = the page's title
+  onStatusChange(status) {},             // 'connecting' | 'connected' | 'timeout'
+  onResize(size) {},
+});
+await widget.remote.setTheme('dark');
+widget.on('orderCompleted', track);
+widget.setInert(true);
+widget.dispose();
+```
+
+- **The same connection as the hooks.** `connectToIframe` acquires the iframe's shared
+  parent connection (see [Connection sharing](#connection-sharing)) and an RPC handle
+  of its own, so it can sit next to React hooks on the same iframe, and several copies
+  of the library still share one connection.
+- **Callbacks in the options, state in getters** (`status`, `size`, `title`), which is
+  what a loader script needs, and what iframe-resizer users know. Events of the page
+  use `on()`, as on the child.
+- **Imperative error policy:** invalid options throw synchronously, like the child's
+  `connectToParent`.
+- **`status`** has the hooks' `'timeout'` (see [Behaviour](#behaviour)), with the same
+  rules; `watchConnectDeadline` (`src/core/connectDeadline.ts`) is shared with
+  `useIframeRPC`.
+- **Resize follows the page's reports only.** There is no direct measurement of a
+  same-origin document, which `useIframeResize` does: a host page without React embeds
+  pages it doesn't render, and those run `autoResize`. The limits and `axis` work as in
+  the hook, and `onResizeLoop` fires when the page's guard trips.
+- **`syncTitle` sets the attribute itself.** The hook can't (React owns `title`); a plain
+  page has no such owner. The original `title` comes back when the page stops sending
+  one and on `dispose()`.
+- **`setInert`** sets the `inert` attribute (and removes only one it set) and tells the
+  page, as `useIframeInert` does for a cross-origin iframe.
+- Covered by `src/core/connectToIframe.test.ts` (against `mockChild`) and
+  `e2e/host.spec.ts`, which runs a real cross-origin widget under a host page without
+  React, from the sources and from the `<script>` build, in every engine.
 
 ## Two modes
 

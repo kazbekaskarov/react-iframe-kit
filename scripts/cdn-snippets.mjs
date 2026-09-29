@@ -28,7 +28,10 @@ const SNIPPET =
 const mode = process.argv[2];
 const { version } = JSON.parse(readFileSync(new URL('package.json', root), 'utf8'));
 
-/** `dist/<name>` → its bytes, from ./dist or from the published tarball. */
+/**
+ * `dist/<name>` → its bytes, from ./dist or from the published tarball; `undefined` for a
+ * file that version doesn't have (a build added after it was released).
+ */
 async function loadFiles() {
   if (mode === '--from-dist') {
     return (name) => readFileSync(new URL(`dist/${name}`, root));
@@ -38,16 +41,18 @@ async function loadFiles() {
   for (const entry of tarEntries(tgz)) {
     if (entry.type === '0') files.set(entry.name.replace(/^package\//, ''), entry.body);
   }
-  return (name) => {
-    const body = files.get(`dist/${name}`);
-    if (!body) throw new Error(`${PACKAGE}@${version} has no dist/${name}`);
-    return body;
-  };
+  return (name) => files.get(`dist/${name}`);
 }
 
 const read = await loadFiles();
-const snippet = (name) => {
-  const integrity = `sha384-${createHash('sha384').update(read(name)).digest('base64')}`;
+const missing = new Set();
+const snippet = (match, name) => {
+  const body = read(name);
+  if (!body) {
+    missing.add(name);
+    return match; // pinned by the first release that has it
+  }
+  const integrity = `sha384-${createHash('sha384').update(body).digest('base64')}`;
   return `<script src="https://cdn.jsdelivr.net/npm/${PACKAGE}@${version}/dist/${name}" integrity="${integrity}" crossorigin="anonymous"></script>`;
 };
 
@@ -60,14 +65,19 @@ for (const file of FILES) {
   } catch {
     continue; // not every listed page exists on every branch
   }
-  const next = text.replace(SNIPPET, (_match, name) => snippet(name));
+  const next = text.replace(SNIPPET, snippet);
   if (next === text) continue;
   if (mode === '--check') stale.push(file);
   else writeFileSync(url, next);
 }
 
+if (missing.size > 0) {
+  console.warn(
+    `${PACKAGE}@${version} has no ${[...missing].join(', ')}; left those snippets as they are.`,
+  );
+}
 if (mode === '--check') {
-  if (stale.length > 0) {
+  if (stale.length > 0 || missing.size > 0) {
     console.error(
       `These CDN snippets don't match ${PACKAGE}@${version} as published:\n  ${stale.join('\n  ')}\nRun \`node scripts/cdn-snippets.mjs\` and commit the result.`,
     );

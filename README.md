@@ -76,6 +76,21 @@ No bundler on that page? One script tag, pinned to a version with its integrity 
 </script>
 ```
 
+The host page doesn't need React either. A widget embedded on customers' sites, or a
+page moving off iframe-resizer, uses `react-iframe-kit/host` (also a `<script>` build,
+global `ReactIframeKitHost`):
+
+```ts
+// the host page, https://app.example.com
+import { connectToIframe } from 'react-iframe-kit/host';
+
+connectToIframe(document.querySelector('iframe'), { resize: true, syncTitle: true });
+```
+
+[Embedding a widget](https://kazbekaskarov.github.io/react-iframe-kit/guides/embedding/)
+covers the white-label case end to end: loader script, multi-tenant origins, theming,
+tokens, analytics events, payments and cookies.
+
 ## Call methods across the boundary
 
 Describe each side once, and both ends are typed:
@@ -146,6 +161,7 @@ the same iframe share one handshake.
 | `react-iframe-kit/child` | the page inside the iframe | `connectToParent`, with RPC and events |
 | `react-iframe-kit/child/lite` | the page inside, when it only needs resize, title and inert | `connectToParent` without RPC |
 | `react-iframe-kit/child/react` | the page inside, with React | `useParent`, `useParentEvent` |
+| `react-iframe-kit/host` | the page that owns the `<iframe>`, without React | `connectToIframe`: resize, RPC, events, title, inert |
 | `react-iframe-kit/testing` | your tests | `mockChild`, `mockParent` |
 | `react-iframe-kit/devtools` | development | `connectReduxDevTools`, `onProtocolMessage` |
 

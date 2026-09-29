@@ -46,8 +46,11 @@ export interface MockChild<
   emit: Emit<LocalSide>;
   /** Subscribes to one of the parent's events; returns the unsubscribe function. */
   on: On<RemoteSide>;
-  /** Reports a content size, as the page's `autoResize` would. Sent once connected. */
-  resize(size: { width: number; height: number }): void;
+  /**
+   * Reports a content size, as the page's `autoResize` would. Sent once connected.
+   * `loop: true` reports the page's feedback-loop guard holding growth.
+   */
+  resize(size: { width: number; height: number; loop?: boolean | undefined }): void;
   /** Reports a page title, as the page's `syncTitle` would. Sent once connected. */
   setTitle(title: string): void;
   /** Resolves once the handshake with the parent completes. */
@@ -95,7 +98,7 @@ export function mockChild<
   let status: MockChildStatus = 'connecting';
   let session: string | undefined;
   let port: MessagePort | undefined;
-  let size: { width: number; height: number } | undefined;
+  let size: { width: number; height: number; loop?: boolean | undefined } | undefined;
   let title: string | undefined;
   let inert = false;
   const connectedWaiters = new Set<{ resolve: () => void; reject: (error: unknown) => void }>();
@@ -176,7 +179,7 @@ export function mockChild<
     emit: handle.emit as Emit<LocalSide>,
     on: handle.on as On<RemoteSide>,
     resize(next) {
-      size = { width: next.width, height: next.height };
+      size = { width: next.width, height: next.height, loop: next.loop || undefined };
       if (status === 'connected') post({ rik: RIK, type: 'size', ...size });
     },
     setTitle(next) {

@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { watchConnectDeadline } from '../core/connectDeadline';
 import type { AnySide, Emit, LocalMethods, Remote, SideShape } from '../core/contract';
 import { DeferredRpc } from '../core/deferredRpc';
 import type { IframeKitError } from '../core/errors';
@@ -170,32 +171,17 @@ export function useIframeRPC<
 
     // `'timeout'` is local to this hook (each has its own `connectTimeout`); the
     // connection itself only knows connecting/connected. See docs/design.md → Behaviour.
-    const { connection } = entry;
-    let deadline: ReturnType<typeof setTimeout> | undefined;
-    const armDeadline = () => {
-      clearTimeout(deadline);
-      const ms = optionsRef.current.connectTimeout ?? DEFAULT_CONNECT_TIMEOUT;
-      if (ms === Infinity) return; // setTimeout would fire at once
-      deadline = setTimeout(
-        () =>
-          setState((prev) =>
-            prev.status === 'connecting' ? { ...prev, status: 'timeout' } : prev,
-          ),
-        ms,
-      );
-    };
-    // A lazy iframe off screen hasn't started loading, so its time starts at `load`;
-    // a reload or navigation while connecting gives the new page its full time too.
-    const onLoad = () => {
-      if (connection.status === 'connecting') armDeadline();
-    };
-    iframe.addEventListener('load', onLoad);
+    const stopDeadline = watchConnectDeadline(
+      iframe,
+      entry.connection,
+      () => optionsRef.current.connectTimeout ?? DEFAULT_CONNECT_TIMEOUT,
+      () =>
+        setState((prev) => (prev.status === 'connecting' ? { ...prev, status: 'timeout' } : prev)),
+    );
 
     let warnTimer: ReturnType<typeof setTimeout> | undefined;
-    const offStatus = connection.onStatusChange((status) => {
+    const offStatus = entry.connection.onStatusChange((status) => {
       setState((prev) => (prev.status === status && !prev.error ? prev : { status, error: null }));
-      clearTimeout(deadline);
-      if (status === 'connecting' && iframe.loading !== 'lazy') armDeadline();
       if (!__DEV__) return;
       clearTimeout(warnTimer);
       if (status !== 'connecting') return;
@@ -209,8 +195,7 @@ export function useIframeRPC<
     const kept = entry;
     return () => {
       offStatus();
-      iframe.removeEventListener('load', onLoad);
-      clearTimeout(deadline);
+      stopDeadline();
       clearTimeout(warnTimer);
       kept.releaseTimer = setTimeout(() => release(kept), 0);
     };

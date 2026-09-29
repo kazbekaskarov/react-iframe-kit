@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { applySize, clamp, type SizeLimits } from '../core/applySize';
+import { applySize, axesOf, clamp, type ResizeAxis, type SizeLimits } from '../core/applySize';
 import { createLoopGuard, type LoopGuard } from '../core/loopGuard';
 import type { MeasureFn, Measurement, Size } from '../core/measure';
 import { observeSize } from '../core/observeSize';
@@ -8,7 +8,7 @@ import type { IframeConnectionOptions } from './connectionOptions';
 import { type IframeTarget, useIframeTarget } from './useIframeTarget';
 import { useIsomorphicLayoutEffect } from './useIsomorphicLayoutEffect';
 
-export type ResizeAxis = 'height' | 'width' | 'both';
+export type { ResizeAxis };
 
 export interface UseIframeResizeOptions extends SizeLimits, IframeConnectionOptions {
   /** Which dimensions follow the content. Default `'height'`. */
@@ -26,11 +26,6 @@ export interface UseIframeResizeOptions extends SizeLimits, IframeConnectionOpti
   /** Replaces the built-in measurement for unusual layouts. Same-origin mode only. */
   measure?: MeasureFn | undefined;
 }
-
-const axesOf = (axis: ResizeAxis) => ({
-  width: axis === 'width' || axis === 'both',
-  height: axis === 'height' || axis === 'both',
-});
 
 /** Sets the iframe's size from a content size, per the current `apply`/`axis`/limits. */
 function applyContentSize(iframe: HTMLIFrameElement, size: Size, options: UseIframeResizeOptions) {
