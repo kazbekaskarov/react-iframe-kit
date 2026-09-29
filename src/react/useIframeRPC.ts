@@ -9,7 +9,12 @@ import type { IframeConnectionOptions } from './connectionOptions';
 import { type IframeTarget, useIframeTarget } from './useIframeTarget';
 import { useIsomorphicLayoutEffect } from './useIsomorphicLayoutEffect';
 
-export type RPCStatus = 'idle' | 'connecting' | 'connected' | 'error';
+/**
+ * `'timeout'` is `'connecting'` for longer than `connectTimeout`: the page to show "the
+ * widget didn't load". It isn't terminal: the status moves on to `'connected'` if the
+ * handshake completes later.
+ */
+export type RPCStatus = 'idle' | 'connecting' | 'connected' | 'timeout' | 'error';
 
 export interface UseIframeRPCOptions<Local extends SideShape = AnySide>
   extends IframeConnectionOptions {
@@ -17,7 +22,12 @@ export interface UseIframeRPCOptions<Local extends SideShape = AnySide>
   methods?: LocalMethods<Local> | undefined;
   /** Per call, from send to result. Default 10 s; `Infinity` is allowed. */
   timeout?: number | undefined;
-  /** How long a call may wait for the connection. Default 30 s; `Infinity` is allowed. */
+  /**
+   * How long to wait for the connection: a queued call rejects with `RIK_TIMEOUT` after
+   * this long, and `status` becomes `'timeout'` after this long in `'connecting'`
+   * (counted from the iframe's first `load` for `loading="lazy"`). Default 30 s;
+   * `Infinity` is allowed.
+   */
   connectTimeout?: number | undefined;
 }
 
@@ -158,9 +168,34 @@ export function useIframeRPC<
       deferred.attach(handle);
     }
 
+    // `'timeout'` is local to this hook (each has its own `connectTimeout`); the
+    // connection itself only knows connecting/connected. See docs/design.md → Behaviour.
+    const { connection } = entry;
+    let deadline: ReturnType<typeof setTimeout> | undefined;
+    const armDeadline = () => {
+      clearTimeout(deadline);
+      const ms = optionsRef.current.connectTimeout ?? DEFAULT_CONNECT_TIMEOUT;
+      if (ms === Infinity) return; // setTimeout would fire at once
+      deadline = setTimeout(
+        () =>
+          setState((prev) =>
+            prev.status === 'connecting' ? { ...prev, status: 'timeout' } : prev,
+          ),
+        ms,
+      );
+    };
+    // A lazy iframe off screen hasn't started loading, so its time starts at `load`;
+    // a reload or navigation while connecting gives the new page its full time too.
+    const onLoad = () => {
+      if (connection.status === 'connecting') armDeadline();
+    };
+    iframe.addEventListener('load', onLoad);
+
     let warnTimer: ReturnType<typeof setTimeout> | undefined;
-    const offStatus = entry.connection.onStatusChange((status) => {
+    const offStatus = connection.onStatusChange((status) => {
       setState((prev) => (prev.status === status && !prev.error ? prev : { status, error: null }));
+      clearTimeout(deadline);
+      if (status === 'connecting' && iframe.loading !== 'lazy') armDeadline();
       if (!__DEV__) return;
       clearTimeout(warnTimer);
       if (status !== 'connecting') return;
@@ -174,6 +209,8 @@ export function useIframeRPC<
     const kept = entry;
     return () => {
       offStatus();
+      iframe.removeEventListener('load', onLoad);
+      clearTimeout(deadline);
       clearTimeout(warnTimer);
       kept.releaseTimer = setTimeout(() => release(kept), 0);
     };

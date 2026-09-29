@@ -58,7 +58,7 @@
     "path": "dist/child/react.js",
     "import": "*",
     "ignore": ["react", "react-dom"],
-    "limit": "7.25 kB",
+    "limit": "7.3 kB",
     "gzip": true
   },
   {

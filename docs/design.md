@@ -113,7 +113,7 @@ Size budgets (min+gzip, React excluded, enforced by size-limit per import scenar
 | entire parent entry | ≤ 10.5 kB | 10.12 kB |
 | `child` entry (`connectToParent` with RPC + `autoResize` + `syncTitle` + inert) | ≤ 6.5 kB | 6.32 kB |
 | `child/lite` entry (the same without RPC and events) | ≤ 4.25 kB | 4.18 kB |
-| `child/react` entry (`useParent`, `useParentEvent`) | ≤ 7.25 kB | 7.2 kB |
+| `child/react` entry (`useParent`, `useParentEvent`) | ≤ 7.3 kB | 7.25 kB |
 | `child` IIFE | ≤ 6.5 kB | 6.32 kB |
 | `child/lite` IIFE | ≤ 4.25 kB | 4.16 kB |
 | `devtools` entry | ≤ 1 kB | 0.72 kB |
@@ -154,6 +154,9 @@ A page that only resizes now ships 4.13 kB instead of 6.28. The split itself cos
 full entry 0.05 kB (the engine-less `call` answer, the lazy engine), which took it
 over 6.25 kB; its budget and the IIFE's were raised to 6.5 kB, and `child/lite` got a
 tight 4.25 kB of its own.
+The `'timeout'` status (see [Behaviour](#behaviour)) put `child/react` 2 bytes over, and
+its budget was raised to 7.3 kB. The parent hooks absorbed it: making every
+`useIframeResize` warning dev-only took 0.4 kB out of every parent scenario.
 
 ## Two modes
 
@@ -632,11 +635,27 @@ because calls made before the connection exists must already work.
   are always used (through a ref), without reconnecting. The set of method *names*
   is taken when the hook registers (on mount, or when the iframe element changes);
   a name that later disappears from `methods` answers `RIK_METHOD_NOT_FOUND`.
-- **Status** is `'idle' | 'connecting' | 'connected' | 'error'`:
+- **Status** is `'idle' | 'connecting' | 'connected' | 'timeout' | 'error'`:
   - `idle`: no iframe element yet (parent), not framed, or running on the
     server (child);
   - `connecting`: waiting for the handshake, including after a connection loss;
   - `connected`: the handshake is complete;
+  - `timeout`: still `connecting` after `connectTimeout`. A host needs this to show
+    "the widget didn't load" without a timer of its own (Stripe Connect's `onLoadError`
+    is the same idea). It is not terminal: the status moves on to `connected` if the
+    handshake completes later, and a later connection loss starts a new wait. It
+    reuses `connectTimeout` rather than adding an option: both mean "how long to wait
+    for the connection". The timer is the hook's own (each hook has its own
+    `connectTimeout`); the shared connection still only knows connecting/connected.
+    - Parent: the wait starts when the status enters `connecting` and restarts on every
+      iframe `load` while connecting, so a reloaded page gets its full time. For an
+      iframe with `loading="lazy"` it starts only at `load`: off screen, the iframe
+      hasn't started loading, and counting from mount would report a timeout for every
+      widget below the fold. Queued calls still count `connectTimeout` from the call;
+      the docs say to raise it for lazy iframes called early.
+    - Child: `useParent` only. The imperative handle keeps `idle | connecting |
+      connected` (its users have `whenConnected()` and their own timers), which keeps
+      the `child` entries' budgets.
   - `error`: terminal configuration error. `error` holds the `IframeKitError`
     (`RIK_ORIGIN_CONFLICT`, `RIK_METHOD_CONFLICT` or `RIK_INVALID_OPTIONS`).
   

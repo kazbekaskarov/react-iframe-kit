@@ -60,9 +60,20 @@ emit('themeChanged', 'dark');
 useIframeEvent<ChildSide, 'submitted'>(ref, 'submitted', ({ id }) => save(id));
 ```
 
-`status` is `'idle'` (no iframe element yet), `'connecting'`, `'connected'` or `'error'`.
-On `'error'`, `error` holds the configuration problem, such as `RIK_ORIGIN_CONFLICT` or
-`RIK_METHOD_CONFLICT`. Hooks never throw.
+`status` is `'idle'` (no iframe element yet), `'connecting'`, `'connected'`, `'timeout'`
+or `'error'`. On `'error'`, `error` holds the configuration problem, such as
+`RIK_ORIGIN_CONFLICT` or `RIK_METHOD_CONFLICT`. Hooks never throw.
+
+`'timeout'` means the iframe has been `'connecting'` for longer than `connectTimeout`,
+which is where to show "the widget didn't load" instead of a spinner. It isn't final: if
+the handshake completes later, `status` moves on to `'connected'`. For an iframe with
+`loading="lazy"` the time counts from its first `load`, so an iframe below the fold
+doesn't time out before it starts loading. Queued calls still count from the moment they
+were made; pass a longer `connectTimeout` (or `Infinity`) for lazy iframes you call early.
+
+```tsx
+if (status === 'timeout') return <a href={widgetUrl} target="_blank">Open the widget</a>;
+```
 
 <Aside title="Why the event name twice?">
   TypeScript can't infer one type argument while another is given, so pass the event

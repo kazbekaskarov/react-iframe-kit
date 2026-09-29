@@ -80,7 +80,10 @@ and stays `'idle'`.
 
 `useParent` takes the same options as `connectToParent`, read once on mount, except
 `methods`, which always uses the latest. It returns `status: 'idle'` during server
-rendering and hydration.
+rendering and hydration, and `'timeout'` after `connectTimeout` without a parent that
+completes the handshake (for example, the page is framed by a site that doesn't use the
+library); like `useIframeRPC`'s, it moves on to `'connected'` if the handshake completes
+later.
 
 ## `react-iframe-kit/testing`
 
