@@ -453,7 +453,13 @@ child                                         parent
     from the back/forward cache).
   - The parent sends `syn` only while it is `connecting`. It sends one **every time it
     enters `connecting`** (creation, `bye`, session loss) and on every iframe
-    `load` while connecting. Its targetOrigin is the expected child origin.
+    `load` while connecting. Its targetOrigin is `'*'`: the prompt carries nothing,
+    and the page's `syn` it prompts is what gets checked (source and origin). It used to
+    be the expected child origin, and then browsers logged "target origin does not
+    match" on every page load, since the connection usually exists while the iframe
+    still holds its initial `about:blank`. Skipping the prompt for that document would
+    mean reading the iframe's `contentDocument`, which WebKit reports as an error once
+    it's cross-origin. `e2e/host.spec.ts` fails on any console error on the host page.
     - The first rule closes a race. After a back/forward cache restore, the
       child's `bye` (on the port) and its new `syn` (on the window) travel through
       different queues, so the `syn` can arrive first. It is then ignored as a

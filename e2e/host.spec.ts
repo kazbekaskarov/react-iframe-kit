@@ -24,6 +24,13 @@ for (const variant of ['sources', 'iife'] as const) {
     const url = `/host-vanilla.html${variant === 'iife' ? '?iife' : ''}`;
 
     test('connects, sizes the iframe, syncs its title and calls both ways', async ({ page }) => {
+      // An embed must not cost the host page console errors (e.g. a message aimed at the
+      // widget's origin while the iframe still holds its initial about:blank).
+      const consoleErrors: string[] = [];
+      page.on('console', (message) => {
+        if (message.type() === 'error') consoleErrors.push(message.text());
+      });
+      page.on('pageerror', (error) => consoleErrors.push(error.message));
       await page.goto(url);
       await expect(page.getByTestId('status')).toHaveText('connected');
 
@@ -49,6 +56,7 @@ for (const variant of ['sources', 'iife'] as const) {
         (window as unknown as { rename(t: string): void }).rename('Payment'),
       );
       await expect(iframe).toHaveAttribute('title', 'Payment');
+      expect(consoleErrors).toEqual([]);
     });
 
     test('makes the widget inert, inside and out', async ({ page }) => {
