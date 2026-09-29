@@ -1,0 +1,52 @@
+<!doctype html>
+<!-- The widget, on the vendor's origin. Plain HTML and react-iframe-kit's child build. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tickets: Friday concert</title>
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 0; padding: 16px; }
+      label { display: block; margin-bottom: 8px; }
+    </style>
+  </head>
+  <body>
+    <form id="checkout">
+      <label>Email <input id="email" type="email" required /></label>
+      <label>Tickets <input id="tickets" type="number" min="1" max="10" value="1" /></label>
+      <button type="submit">Buy</button>
+    </form>
+    <p id="done" hidden>Thanks! Your tickets are on their way.</p>
+
+    <script src="/vendor/child.global.js"></script>
+    <script>
+      // In production, the tenant's allowed origins come from your configuration.
+      const allowed = ['http://localhost:8080'];
+      let started = false;
+
+      const host = ReactIframeKit.connectToParent({
+        allowedOrigins: [(origin) => allowed.includes(origin)],
+        autoResize: true,
+        syncTitle: true,
+        methods: {
+          prefill(data) {
+            if (started) return false;
+            document.getElementById('email').value = data.email;
+            return true;
+          },
+        },
+      });
+
+      document.getElementById('email').addEventListener('input', () => (started = true));
+      document.getElementById('checkout').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        await host.remote.getToken(); // authorize the order with your API
+        const tickets = Number(document.getElementById('tickets').value);
+        host.emit('orderCompleted', { orderId: `A-${Date.now() % 10000}`, tickets });
+        document.getElementById('checkout').hidden = true;
+        document.getElementById('done').hidden = false;
+        document.title = 'Tickets: order confirmed';
+      });
+    </script>
+  </body>
+</html>

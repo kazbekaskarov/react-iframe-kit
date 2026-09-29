@@ -19,8 +19,6 @@ const FILES = [
   'site/src/content/docs/getting-started.mdx',
   'site/src/content/docs/guides/embedding.mdx',
   'site/src/content/docs/guides/migrate-from-iframe-resizer.mdx',
-  'examples/vanilla-widget/host.html',
-  'examples/vanilla-widget/widget.html',
 ];
 const SNIPPET =
   /<script src="https:\/\/cdn\.jsdelivr\.net\/npm\/react-iframe-kit(?:@[^/"]+)?\/dist\/([\w-]+\.global\.js)"[^>]*><\/script>/g;

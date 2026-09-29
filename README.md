@@ -154,6 +154,17 @@ the same iframe share one handshake.
 - **SSR-safe**, React Server Components-friendly (`'use client'` only where hooks are),
   ESM and CJS.
 
+## Examples
+
+Runnable, and tested in CI against every change:
+
+- [`examples/nextjs`](examples/nextjs): a Next.js App Router host and widget, with calls,
+  events, resize, title and a fallback when the widget doesn't load.
+  [Open in StackBlitz](https://stackblitz.com/github/kazbekaskarov/react-iframe-kit/tree/main/examples/nextjs).
+- [`examples/vanilla-widget`](examples/vanilla-widget): a white-label ticket widget on a
+  site without React: the customer's snippet, the vendor's loader with a command queue,
+  and the widget, on two origins.
+
 ## Entry points
 
 | Import | Use it in | Gives you |

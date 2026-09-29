@@ -1,0 +1,11 @@
+{
+  "name": "react-iframe-kit-example-vanilla-widget",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node serve.mjs"
+  },
+  "dependencies": {
+    "react-iframe-kit": "latest"
+  }
+}

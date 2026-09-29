@@ -1227,6 +1227,11 @@ summaries out of its size budget.
 - A `mobile-webkit` Playwright project (iPhone 15 viewport and touch input) runs the
   embed paths: handshake, cross-origin resize, calls, reloads, `<Frame>` and the
   sandboxed child.
+- **Examples** (`examples/`, CI job "Example"): each example is installed as users get
+  it, with the library replaced by a `pnpm pack` of the current build, and smoke-tested
+  with Playwright: `examples/nextjs` after `next build` (server components importing
+  the package, the `'use client'` boundaries, the handshake after hydration), and
+  `examples/vanilla-widget` on two origins in all three engines.
 - **Docs site** (`site/`, workflow "Docs"): a Playwright smoke test of the built site
   loads every page with no console errors, drives the live playground, and runs the
   RPC demo both ways.
